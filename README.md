@@ -1,6 +1,7 @@
 # Mantine Skills for AI Agents
 
-A collection of [Claude Code skills](https://docs.anthropic.com/en/docs/claude-code/skills) for building with [Mantine](https://mantine.dev/) (v9).
+A collection of [Claude Code skills](https://docs.anthropic.com/en/docs/claude-code/skills) for building with [Mantine](https://mantine.dev/).
+Compatible with other agents as well via [skills.sh](https://skills.sh/).
 
 ## Available Skills
 
