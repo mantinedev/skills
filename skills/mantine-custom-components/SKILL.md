@@ -79,7 +79,9 @@ What you get without extra code:
 - Every element rendered with `getStyles('selector')` gets the static class `mantine-MyComponent-selector`.
 - `classNames`, `styles`, `vars` and `attributes` props, and the same keys in `MyComponent.extend()` in the theme.
 - `unstyled` removes the CSS module classes. Static classes and the CSS variables on the root stay.
-- `MyComponent.extend()` and `MyComponent.withProps()` static functions.
+- `MyComponent.extend()` and `MyComponent.withProps()` static functions. `withProps` presets props at
+  runtime but does not change types: a required prop stays required for TypeScript, so make props you
+  intend to preset optional.
 
 ## Variants and sizes
 
@@ -187,8 +189,8 @@ In `theme.components`, sub-components are registered without the dot: `MyCardSec
 
 Read the part that matches the task before writing code:
 
-- **[`references/patterns.md`](references/patterns.md)** — complete examples. Read "Compound component with context" for components with sub-components (`Card.Section`), "Wrapping a Mantine component" when the component renders an existing Mantine input or component inside and must forward `classNames` / `styles` to it, "Polymorphic component" for a `component` prop, "Generic component" for props that depend on a type parameter, "Theme integration" for `extend` and `withProps`
-- **[`references/api.md`](references/api.md)** — every function and type: `factory` variants, `useProps`, `useStyles` and `getStyles` options, `createVarsResolver`, `createSafeContext`, `StylesApiProps`, `CompoundStylesApiProps`, `BoxProps` (including `mod`), `ElementProps`, theme helpers (`getSize`, `getRadius`, `getThemeColor`...)
+- **[`references/patterns.md`](references/patterns.md)** — complete examples. Read "Compound component with context" for components with sub-components (`Card.Section`), "Wrapping a Mantine component" when the component renders an existing Mantine input or component inside and must forward `classNames` / `styles` to it, "Components that share theme configuration" for a family of components with a common base, "Converting an existing component" when migrating a `forwardRef` component with inline styles, "Polymorphic component" for a `component` prop, "Generic component" for props that depend on a type parameter, "Theme integration" for `extend` and `withProps`
+- **[`references/api.md`](references/api.md)** — read it for any component beyond the template above: it is the only place that documents `getStyles` options (`focusable`), the `mod` prop, theme helper outputs, `MantineThemeProvider` and what theme functions receive. Every function and type: `factory` variants, `useProps`, `useStyles` and `getStyles` options, `createVarsResolver`, `createSafeContext`, `StylesApiProps`, `CompoundStylesApiProps`, `BoxProps` (including `mod`), `ElementProps`, theme helpers (`getSize`, `getRadius`, `getThemeColor`...)
 
 ## Looking things up
 

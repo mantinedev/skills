@@ -7,6 +7,8 @@
 - [Polymorphic component](#polymorphic-component)
 - [Generic component](#generic-component)
 - [Wrapping a Mantine component](#wrapping-a-mantine-component)
+- [Components that share theme configuration](#components-that-share-theme-configuration)
+- [Converting an existing component](#converting-an-existing-component)
 - [Sub-components that need their index](#sub-components-that-need-their-index)
 - [Theme integration](#theme-integration)
 - [Namespace exports](#namespace-exports)
@@ -373,7 +375,8 @@ export const MySelect = genericFactory<MySelectFactory>((_props) => {
   const props = useProps('MySelect', defaultProps as any, _props);
   const { classNames, className, style, styles, unstyled, vars, attributes, multiple, value, onChange, ...others } = props;
 
-  // The callback props are typed from `signature`; cast them to the non-generic props for useStyles
+  // Inside the callback, props carry the free type parameter (MySelectProps<M>), which useStyles
+  // cannot accept: cast them to the non-generic props. `defaultProps as any` is needed for the same reason
   const getStyles = useStyles<MySelectFactory>({
     name: 'MySelect', classes, props: props as MySelectProps,
     className, style, classNames, styles, unstyled, vars, attributes,
@@ -384,6 +387,12 @@ export const MySelect = genericFactory<MySelectFactory>((_props) => {
 
 MySelect.displayName = 'MySelect';
 ```
+
+A generic component can have static sub-components: add `staticComponents` to the same `Factory`
+next to `signature` and assign them (`MySelect.Option = MySelectOption`). With several type
+parameters (`<T, M extends boolean = false>`), use `props: MySelectProps<any, boolean>` in the
+`Factory`. A context cannot be generic: type its value with `any` for the item type
+(`createSafeContext<MyContextValue<any>>`) and keep the typed API on the root's props.
 
 **Usage:**
 ```tsx
@@ -477,6 +486,47 @@ HintInput.classes = classes;
 - Theme default props of the inner component (`theme.components.TextInput.defaultProps`) still apply to it.
 - If no extra outer element is needed, render the inner component as the root and pass `className`,
   `style` and style props straight through with the rest of the props.
+
+---
+
+## Components that share theme configuration
+
+For a family built on one visual base (`Surface`, and `Panel` and `Callout` on top of it), pass the
+base name before the component's own name to both hooks:
+
+```tsx
+const props = useProps(['Surface', 'Panel'], defaultProps, _props);
+
+const getStyles = useStyles<PanelFactory>({
+  name: ['Surface', 'Panel'],
+  classes, props, className, style, classNames, styles, unstyled, vars, attributes, varsResolver,
+});
+```
+
+- Theme `defaultProps` for `Surface` apply to `Panel`; `Panel`'s own theme entry and props passed by
+  the caller win over them.
+- Theme `classNames`, `styles` and `vars` for `Surface` selectors apply to the same selectors of
+  `Panel`, and the root gets both static classes (`mantine-Surface-root mantine-Panel-root`).
+- Each component keeps its own `extend` and `withProps`.
+- Share the look by putting the base rules in one CSS module and adding its class to each
+  component's root class (`classes: { ...panelClasses, root: `${base.root} ${panelClasses.root}` }`),
+  and share variables by calling one plain function from each component's vars resolver.
+
+---
+
+## Converting an existing component
+
+Checklist for turning a plain React component (`forwardRef`, inline style objects, hard-coded
+colors) into a Mantine-style one:
+
+1. `forwardRef((props, ref) => ...)` becomes `factory<MyFactory>((_props) => ...)` with `ref` declared in the `Factory` type. Do not handle `ref` yourself: it flows to the root through `...others`.
+2. Default values in the parameter list become `defaultProps` passed to `useProps`, so that the theme can override them.
+3. Each static inline style object becomes a class in the CSS module and a selector in `stylesNames`; render the element with `getStyles('selector')`.
+4. Each style value computed from props becomes a CSS variable set in the vars resolver and read in CSS (`width: var(--stack-size)`).
+5. Size maps (`{ small: 24, medium: 36 }`) become token variables in CSS selected with `getSize(size, 'stack-size')`; boolean look props (`rounded`) become the Mantine prop (`radius` with `getRadius`).
+6. Hard-coded colors become theme variables or `light-dark()`; a color prop becomes `color` resolved with `getThemeColor` or `theme.variantColorResolver`.
+7. State kept only for styling (hovered, expanded) becomes CSS (`:hover`, `:focus-within`) or a `mod` data attribute.
+8. Keep `className`, `style` and the remaining props flowing to the root: `<Box {...getStyles('root')} {...others} />`.
 
 ---
 

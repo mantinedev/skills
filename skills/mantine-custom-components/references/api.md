@@ -12,6 +12,11 @@
 - [createSafeContext](#createsafecontext)
 - [Theme helper functions](#theme-helper-functions)
 - [Static properties](#static-properties)
+- [Data attributes with `mod`](#data-attributes-with-mod)
+- [Theme for a part of the tree](#theme-for-a-part-of-the-tree)
+- [Theme functions: what they receive](#theme-functions-what-they-receive)
+- [Custom variant colors](#custom-variant-colors)
+- [Writing the CSS module](#writing-the-css-module)
 
 ---
 
@@ -172,7 +177,7 @@ useProps<T extends Record<string, any>, U extends Partial<T> | null>(
 
 **Important:** Always call `useProps` before destructuring. Always use `satisfies Partial<Props>` (not `: Partial<Props>`) for `defaultProps` to preserve narrowed types. Pass `null` when the component has no default props.
 
-An array of names shares theme default props between components. Later names win:
+An array of names shares theme configuration between components. Later names win:
 `useProps(['Input', 'MyInput'], defaultProps, _props)` applies `theme.components.Input.defaultProps` first, then `MyInput`.
 
 ```ts
@@ -190,7 +195,9 @@ Returns a `getStyles` function that provides `className` and `style` for each St
 
 ```ts
 useStyles<Payload extends FactoryPayload>(input: {
-  name: string | (string | undefined)[]; // component name(s): theme lookup and static classes
+  name: string | (string | undefined)[]; // component name(s). With an array, theme classNames, styles and vars of
+                                         // every name are applied in order and each name gets a static class
+                                         // (mantine-Surface-root mantine-Panel-root)
   classes: Record<string, string>; // CSS module classes object
   props: Payload['props'];
   stylesCtx?: Payload['ctx'];    // optional context for styles/vars resolvers
@@ -447,6 +454,10 @@ CSS should react to:
 ```
 
 `variant` and `size` passed to `Box` become `data-variant` and `data-size` (size only for non-numeric values).
+Keys are written in camelCase or kebab-case (`expandOnHover` becomes `data-expand-on-hover`). To keep a
+`mod` passed by the user, merge with an array: `mod={[{ active }, mod]}`.
+
+Type a size prop that accepts tokens and custom values as `MantineSize | (string & {}) | number`.
 
 ---
 
@@ -495,3 +506,33 @@ const variantColorResolver: VariantColorsResolver = (input) => {
   return defaultVariantColorsResolver(input);
 };
 ```
+
+---
+
+## Writing the CSS module
+
+The project CSS goes through `postcss-preset-mantine`, which adds:
+
+```css
+.root {
+  /* value for light scheme, value for dark scheme */
+  background-color: light-dark(var(--mantine-color-white), var(--mantine-color-dark-6));
+  padding: rem(12px); /* px to rem that follows theme.scale */
+
+  @mixin hover {
+    /* :hover on devices with a pointer, :active on touch devices */
+    background-color: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-5));
+  }
+
+  &[data-active] { /* attributes from the mod prop */ }
+}
+```
+
+Theme variables that follow the color scheme by themselves: `--mantine-color-body` (page background),
+`--mantine-color-text`, `--mantine-color-dimmed`, `--mantine-color-default-border`,
+`--mantine-primary-color-filled`, `--mantine-primary-color-light`, `--mantine-color-{name}-filled`,
+`--mantine-color-{name}-light`, `--mantine-color-{name}-light-color`.
+
+The `vars` prop and `vars` in the theme are functions: `vars={(theme, props) => ({ root: { '--my-ring': 'hotpink' } })}`.
+A variable that is declared in the `Factory` `vars` type but never set by the resolver is fine: give
+it a fallback in CSS (`var(--my-ring, var(--mantine-color-body))`) and users can still set it.
