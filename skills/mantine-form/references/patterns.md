@@ -6,6 +6,12 @@
 - [Array / list fields](#array--list-fields)
 - [Async validation](#async-validation)
 - [Conditional fields](#conditional-fields)
+- [Conditional validation](#conditional-validation)
+- [Multi-step form](#multi-step-form)
+- [Loading initial values](#loading-initial-values)
+- [Saving and new baseline](#saving-and-new-baseline)
+- [Controlling a form from outside](#controlling-a-form-from-outside)
+- [Custom inputs](#custom-inputs)
 - [Form context across components](#form-context-across-components)
 - [transformValues](#transformvalues)
 - [Uncontrolled mode](#uncontrolled-mode)
@@ -136,11 +142,27 @@ return (
 
 **List methods:**
 ```tsx
-form.insertListItem('employees', { name: '', role: '' });       // append
-form.insertListItem('employees', { name: '', role: '' }, 0);    // prepend
+form.insertListItem('employees', { name: '', role: '', key: randomId() });     // append
+form.insertListItem('employees', { name: '', role: '', key: randomId() }, 0);  // prepend
 form.removeListItem('employees', index);
 form.reorderListItem('employees', { from: 2, to: 0 });
-form.replaceListItem('employees', index, { name: 'New', role: 'Dev' });
+form.replaceListItem('employees', index, { name: 'New', role: 'Dev', key: randomId() });
+```
+
+List methods rerender the component in both modes, and field errors move with their rows.
+
+**Rules that depend on other items** get the item path as the third argument (`'employees.1.email'`):
+
+```tsx
+validate: {
+  employees: {
+    email: (value, values, path) => {
+      const index = Number(path.split('.')[1]);
+      const isDuplicate = values.employees.some((item, i) => i < index && item.email === value);
+      return isDuplicate ? 'Duplicate email' : null;
+    },
+  },
+},
 ```
 
 ---
@@ -167,7 +189,27 @@ const form = useForm({
 });
 ```
 
-`form.validating` is `true` while any async validation runs, `form.isValidating('username')` checks one field.
+A schema can be async too. Use `schemaResolver(schema)` without `{ sync: true }`:
+
+```tsx
+const schema = z.object({
+  discountCode: z.string().refine(async (code) => code === '' || (await checkCode(code)), {
+    error: 'Unknown discount code',
+  }),
+});
+
+const form = useForm({
+  mode: 'uncontrolled',
+  initialValues: { discountCode: '' },
+  validate: schemaResolver(schema),
+});
+
+// Validate one field and act on the result, for example on blur
+const { hasError } = await form.validateField('discountCode');
+```
+
+`form.submitting` is `true` during async validation on submit as well, so `loading={form.submitting}`
+on the submit button covers the whole submit. `form.validating` is `true` while any async validation runs, `form.isValidating('username')` checks one field.
 With async rules, `form.validate()` and `form.isValid()` return a `Promise`.
 
 ---
@@ -201,6 +243,162 @@ const hasCompany = form.useWatchValue('hasCompany');
 
 ---
 
+## Conditional validation
+
+Hidden fields keep their values and are still validated. Make the rule depend on the value that
+controls visibility.
+
+```tsx
+// Rules object: the second argument is all form values
+validate: {
+  companyName: (value, values) =>
+    values.hasCompany && value.trim().length === 0 ? 'Company name is required' : null,
+}
+
+// zod: add issues with the field path, the path becomes the error key ('billing.zip')
+const schema = z
+  .object({ sameAsShipping: z.boolean(), billing: z.object({ zip: z.string() }) })
+  .superRefine((values, ctx) => {
+    if (!values.sameAsShipping && !/^\d{5}$/.test(values.billing.zip)) {
+      ctx.addIssue({ code: 'custom', path: ['billing', 'zip'], message: 'ZIP must be 5 digits' });
+    }
+  });
+```
+
+---
+
+## Multi-step form
+
+Validate only the fields of the current step with `validateField`. It sets the field error and
+returns `{ hasError }`. Await the results: with async rules they are promises.
+
+```tsx
+const stepFields = [
+  ['username', 'password'],
+  ['fullName', 'country'],
+] as const;
+
+const handleNext = async () => {
+  const results = await Promise.all(stepFields[active].map((path) => form.validateField(path)));
+  if (results.every((result) => !result.hasError)) {
+    setActive((current) => current + 1);
+  }
+};
+```
+
+Values of unmounted steps are kept in the form. Give each step component access to the form with
+[form context](#form-context-across-components).
+
+---
+
+## Loading initial values
+
+Call `form.initialize` when the data arrives. It sets both values and initial values, so the form
+is not dirty afterwards and `form.reset()` returns to the loaded values. It works once.
+
+```tsx
+const form = useForm({ mode: 'uncontrolled', initialValues: { name: '', country: '' } });
+
+useEffect(() => {
+  if (query.data) {
+    form.initialize(query.data);
+  }
+}, [query.data]);
+
+<Button disabled={!form.isDirty()} onClick={form.reset}>Discard changes</Button>
+```
+
+---
+
+## Saving and new baseline
+
+After a successful save, make the saved values the new initial values so that `form.isDirty()` is
+`false` and `form.reset()` returns to them:
+
+```tsx
+const handleSubmit = async (values: typeof form.values) => {
+  await save(values);
+  form.setInitialValues(values);
+  form.resetDirty(values);
+};
+```
+
+Per-field state: `form.isDirty('email')` during render, `form.resetField('email')` to undo one field.
+
+---
+
+## Controlling a form from outside
+
+A toolbar or another component that is not a child of the form can control it with
+`createFormActions`. The form opts in with `name`.
+
+```tsx
+// settings-form.ts
+export const settingsFormActions = createFormActions<SettingsValues>('settings-form');
+
+// SettingsForm.tsx
+const form = useForm({ name: 'settings-form', mode: 'uncontrolled', initialValues });
+<form id="settings-form" onSubmit={form.onSubmit(handleSubmit)}>...</form>
+
+// Toolbar.tsx, rendered anywhere on the page
+<Button onClick={() => settingsFormActions.reset()}>Reset</Button>
+<Button onClick={() => settingsFormActions.setValues(demoValues)}>Load demo data</Button>
+<Button onClick={() => settingsFormActions.clearErrors()}>Clear errors</Button>
+<Button type="submit" form="settings-form">Save</Button>
+```
+
+To change every input at once (for example disable them while saving), use `enhanceGetInputProps`:
+
+```tsx
+const form = useForm({
+  mode: 'uncontrolled',
+  initialValues,
+  enhanceGetInputProps: ({ form }) => ({ disabled: form.submitting }),
+});
+```
+
+---
+
+## Custom inputs
+
+A component works with `form.getInputProps` when it accepts `value`, `defaultValue`, `onChange`,
+`error`, `onFocus` and `onBlur`. `onChange` can be called with a raw value. Use `useUncontrolled`
+from `@mantine/hooks` so that it works in both form modes; `key={form.key(path)}` remounts it on
+`form.reset()`.
+
+```tsx
+import { ActionIcon, Group, Input, Text } from '@mantine/core';
+import { useUncontrolled } from '@mantine/hooks';
+
+interface StepperInputProps {
+  label?: React.ReactNode;
+  error?: React.ReactNode;
+  value?: number;
+  defaultValue?: number;
+  onChange?: (value: number) => void;
+  onFocus?: React.FocusEventHandler;
+  onBlur?: React.FocusEventHandler;
+}
+
+function StepperInput({ label, error, value, defaultValue, onChange, onFocus, onBlur }: StepperInputProps) {
+  const [current, setCurrent] = useUncontrolled({ value, defaultValue, finalValue: 1, onChange });
+
+  return (
+    <Input.Wrapper label={label} error={error} labelElement="div" onFocus={onFocus} onBlur={onBlur}>
+      <Group gap="xs">
+        <ActionIcon aria-label="Decrease" onClick={() => setCurrent(current - 1)}>−</ActionIcon>
+        <Text>{current}</Text>
+        <ActionIcon aria-label="Increase" onClick={() => setCurrent(current + 1)}>+</ActionIcon>
+      </Group>
+    </Input.Wrapper>
+  );
+}
+
+<StepperInput label="Guests" key={form.key('guests')} {...form.getInputProps('guests')} />
+```
+
+---
+
 ## Form context across components
 
 Share one form instance across a component tree without prop drilling.
@@ -215,6 +413,7 @@ interface ProfileValues {
 }
 
 const [FormProvider, useFormContext, useProfileForm] = createFormContext<ProfileValues>();
+// With transformValues: createFormContext<ProfileValues, TransformedProfileValues>()
 
 // 2. Wrap your form tree with FormProvider
 function ProfileForm() {
@@ -270,7 +469,13 @@ const form = useForm({
 
 // handler receives { price: number, tags: string[] }
 form.onSubmit((values) => console.log(values));
+
+// Type for a handler declared separately
+type Payload = TransformedValues<typeof form>; // import type { TransformedValues } from '@mantine/form'
+const handleSubmit = (values: Payload) => save(values);
 ```
+
+Validation runs on the raw values, the transform is applied after it passes.
 
 ---
 

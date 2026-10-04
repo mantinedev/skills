@@ -271,7 +271,8 @@ const rightSection = value ? (
 ## Search inside the dropdown
 
 Button trigger with `Combobox.Search` in the dropdown. Focus the search input when the dropdown
-opens and return focus to the target when it closes.
+opens and return focus to the target when it closes. Call `combobox.updateSelectedOptionIndex()`
+whenever the options list changes, otherwise keyboard navigation keeps the old index.
 
 ```tsx
 const [search, setSearch] = useState('');
@@ -310,7 +311,10 @@ const options = data
   <Combobox.Dropdown>
     <Combobox.Search
       value={search}
-      onChange={(event) => setSearch(event.currentTarget.value)}
+      onChange={(event) => {
+        combobox.updateSelectedOptionIndex();
+        setSearch(event.currentTarget.value);
+      }}
       placeholder="Search"
     />
     <Combobox.Options>

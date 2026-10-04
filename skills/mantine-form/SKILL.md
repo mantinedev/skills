@@ -43,7 +43,7 @@ update after `form.setFieldValue`, `form.setValues` or `form.reset`.
 <NumberInput label="Age" key={form.key('age')} {...form.getInputProps('age')} />
 ```
 
-Checkboxes and switches need `{ type: 'checkbox' }`, individual radios need `{ type: 'radio', value }`:
+Checkboxes and switches need `{ type: 'checkbox' }`:
 
 ```tsx
 <Checkbox
@@ -51,8 +51,20 @@ Checkboxes and switches need `{ type: 'checkbox' }`, individual radios need `{ t
   key={form.key('agreed')}
   {...form.getInputProps('agreed', { type: 'checkbox' })}
 />
-<Radio label="Red" {...form.getInputProps('color', { type: 'radio', value: 'red' })} />
 ```
+
+`Select`, `NumberInput`, `Radio.Group`, `Checkbox.Group` and other Mantine inputs with a `value` /
+`onChange` pair work with plain `getInputProps` and a `key`:
+
+```tsx
+<Radio.Group label="Delivery" key={form.key('delivery')} {...form.getInputProps('delivery')}>
+  <Radio value="standard" label="Standard" />
+  <Radio value="express" label="Express" />
+</Radio.Group>
+```
+
+For standalone radios without `Radio.Group`, use `form.getInputProps('color', { type: 'radio', value: 'red' })`
+and add `key={form.key('color')}` to each radio.
 
 ### 3. Handle submission
 
@@ -63,12 +75,13 @@ Checkboxes and switches need `{ type: 'checkbox' }`, individual radios need `{ t
 </form>
 ```
 
-`onSubmit` only calls the handler when validation passes. To handle failures:
+`onSubmit` only calls the handler when validation passes. If the handler returns a promise,
+`form.submitting` is `true` until it settles. To handle failures:
 
 ```tsx
 form.onSubmit(
   (values, event) => save(values),
-  (errors, values, event) => console.log('Validation failed', errors)
+  (errors, values, event) => console.log('Validation failed', errors) // { 'user.email': 'Invalid email' }
 );
 ```
 
@@ -116,10 +129,13 @@ validate: (values) => ({
 
 ### When to validate
 
+By default fields are validated on submit only.
+
 ```tsx
-validateInputOnChange: true,        // validate all fields on every change
-validateInputOnChange: ['email'],   // validate specific fields only
-validateInputOnBlur: true,          // validate on blur instead
+validateInputOnChange: true,            // also validate every field when it changes
+validateInputOnChange: ['email'],       // only the listed fields
+validateInputOnBlur: ['email'],         // same options, on blur
+validateInputOnBlur: [`members.${FORM_INDEX}.email`], // list items, FORM_INDEX is exported from @mantine/form
 ```
 
 ## Modes
@@ -132,25 +148,30 @@ validateInputOnBlur: true,          // validate on blur instead
 | Input props                      | `defaultValue` + `onChange`         | `value` + `onChange`     |
 | `key={form.key(path)}` on inputs | Required                            | Not needed               |
 
-`form.errors`, `form.submitting` and `form.validating` are React state in both modes.
+## What rerenders in uncontrolled mode
 
-## Reading values during render
-
-`form.getValues()` does not rerender the component in uncontrolled mode. To show or hide
-part of the form based on a value, use `form.useWatchValue`:
+- Typing in an input does not rerender the form.
+- `form.getValues()` during render is not updated by typing. To show or hide part of the form
+  based on a value, use `form.useWatchValue(path)`. Nested paths work: `form.useWatchValue('members.0.role')`.
+- `setFieldValue`, `setValues`, `insertListItem`, `removeListItem`, `reorderListItem`, `reset` and
+  `initialize` do rerender, so rendering a list from `form.getValues().items.map(...)` is correct.
+- `form.errors`, `form.isDirty()`, `form.isDirty('path')`, `form.isTouched()`, `form.submitting` and
+  `form.validating` can be used during render in both modes: the form rerenders when they change.
 
 ```tsx
 const shipsInternationally = form.useWatchValue('shipsInternationally');
 ```
 
+## References
+
+Read the reference that matches the task before writing code:
+
+- **[`references/patterns.md`](references/patterns.md)** — read for: nested objects, array fields, lists inside lists and `formRootRule`, async validation (rules and async schemas), conditional fields, conditional validation, multi-step forms, loading initial values from a server, saving and setting a new baseline, controlling a form from outside its component, custom inputs, form context across components, `transformValues`, standalone `useField`, server errors after submission
+- **[`references/api.md`](references/api.md)** — read for everything else. It is the only place that lists every `useForm` option and return member (`watch`, `onValuesChange`, `enhanceGetInputProps`, `resetField`, `clearFieldError`, `touchTrigger` and others), plus `useField`, `createFormContext`, `createFormActions`, `schemaResolver`, built-in validators and types
+
 ## Looking things up
 
-This skill covers the common API. For anything else, do not guess:
+If the references do not cover what you need, do not guess:
 
 - If the Mantine MCP server (`@mantine/mcp-server`) is connected, use `search_docs` and `get_item_doc`
 - Otherwise fetch `https://mantine.dev/llms.txt` and open the linked form pages
-
-## References
-
-- **[`references/api.md`](references/api.md)** — Full API: `useForm` options, complete return value, `useField`, `createFormContext`, `createFormActions`, `schemaResolver`, all built-in validators, key types
-- **[`references/patterns.md`](references/patterns.md)** — Code examples: nested objects, array fields, list validation with `formRootRule`, async validation, conditional fields, form context across components, `transformValues`, `useField` standalone, server errors
