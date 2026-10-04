@@ -41,10 +41,11 @@ export type MyComponentFactory = Factory<{
   variant: MyComponentVariant;
 }>;
 
-const defaultProps = { radius: 'md' } satisfies Partial<MyComponentProps>;
+const defaultProps = {} satisfies Partial<MyComponentProps>;
 
 const varsResolver = createVarsResolver<MyComponentFactory>((_theme, { radius }) => ({
-  root: { '--my-radius': getRadius(radius) },
+  // undefined leaves the variable unset, so the CSS fallback (theme default radius) applies
+  root: { '--my-radius': radius === undefined ? undefined : getRadius(radius) },
 }));
 
 export const MyComponent = factory<MyComponentFactory>((_props) => {
@@ -61,9 +62,24 @@ export const MyComponent = factory<MyComponentFactory>((_props) => {
 
 MyComponent.displayName = 'MyComponent';
 MyComponent.classes = classes;
+MyComponent.varsResolver = varsResolver;
+```
+
+```css
+/* MyComponent.module.css */
+.root {
+  border-radius: var(--my-radius, var(--mantine-radius-default));
+}
 ```
 
 `ref` is a regular prop in React 19: it arrives in `props` and reaches the root element through `...others`.
+
+What you get without extra code:
+
+- Every element rendered with `getStyles('selector')` gets the static class `mantine-MyComponent-selector`.
+- `classNames`, `styles`, `vars` and `attributes` props, and the same keys in `MyComponent.extend()` in the theme.
+- `unstyled` removes the CSS module classes. Static classes and the CSS variables on the root stay.
+- `MyComponent.extend()` and `MyComponent.withProps()` static functions.
 
 ## Variants and sizes
 
@@ -83,9 +99,29 @@ const { variant, size, ...others } = props;
 }
 ```
 
+Sizes driven by one `size` prop: define the token values in CSS and select one with `getSize`. A
+number or any CSS value passed as `size` is used as is (`getSize(60, 'x')` returns `calc(3.75rem * var(--mantine-scale))`).
+
+```tsx
+root: { '--card-padding': getSize(size, 'card-padding'), '--card-fz': getFontSize(size) },
+```
+
+```css
+.root {
+  --card-padding-sm: 12px;
+  --card-padding-md: 16px;
+  --card-padding-lg: 24px;
+
+  padding: var(--card-padding, var(--card-padding-md));
+}
+```
+
 For colors that follow the theme, resolve them in the vars resolver with
 `theme.variantColorResolver({ color: color || theme.primaryColor, theme, variant: variant || 'filled', autoContrast })`
-— it returns `background`, `hover`, `color` and `border`.
+— it returns `background`, `hover` and `color` as colors and `border` as a full `border` shorthand value
+(`1px solid transparent`). It knows the variants `filled`, `light`, `outline`, `subtle`, `transparent`, `white` and
+`default`; `autoContrast: undefined` falls back to `theme.autoContrast`. For a single color use
+`getThemeColor(color, theme)`: it accepts `'blue'`, `'teal.7'` and CSS colors.
 
 ## Factory variant — which to use
 
@@ -135,14 +171,17 @@ const theme = createTheme({
 
 In `theme.components`, sub-components are registered without the dot: `MyCardSection: MyCard.Section.extend({ defaultProps })`.
 
+## References
+
+Read the part that matches the task before writing code:
+
+- **[`references/patterns.md`](references/patterns.md)** — complete examples. Read "Compound component with context" for components with sub-components (`Card.Section`), "Polymorphic component" for a `component` prop, "Generic component" for props that depend on a type parameter, "Theme integration" for `extend` and `withProps`
+- **[`references/api.md`](references/api.md)** — every function and type: `factory` variants, `useProps`, `useStyles` and `getStyles` options, `createVarsResolver`, `createSafeContext`, `StylesApiProps`, `CompoundStylesApiProps`, `BoxProps` (including `mod`), `ElementProps`, theme helpers (`getSize`, `getRadius`, `getThemeColor`...)
+
 ## Looking things up
 
-This skill covers the common API. For anything else, do not guess:
+If the references do not cover what you need, do not guess:
 
 - If the Mantine MCP server (`@mantine/mcp-server`) is connected, use `search_docs`, `get_item_doc` and `get_api`
 - Otherwise fetch `https://mantine.dev/llms.txt` and open the Styles API, variants and sizes, and custom components pages
 
-## References
-
-- **[`references/api.md`](references/api.md)** — All imports: `factory`, `useProps`, `useStyles`, `createVarsResolver`, `createSafeContext`, `StylesApiProps`, `CompoundStylesApiProps`, `BoxProps`, `ElementProps`, theme helpers (`getSize`, `getRadius`, etc.)
-- **[`references/patterns.md`](references/patterns.md)** — Full examples: compound components with context, polymorphic component, generic component, theme integration

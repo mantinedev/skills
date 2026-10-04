@@ -4,7 +4,7 @@
 - [Imports cheatsheet](#imports-cheatsheet)
 - [factory / polymorphicFactory / genericFactory](#factory--polymorphicfactory--genericfactory)
 - [Factory type fields](#factory-type-fields)
-- [useProps](#usepropss)
+- [useProps](#useprops)
 - [useStyles](#usestyles)
 - [createVarsResolver](#createvarsresolver)
 - [StylesApiProps and CompoundStylesApiProps](#stylesapiprops-and-compoundstylesapiprops)
@@ -54,6 +54,11 @@ import {
   getShadow,
   rem,
   em,
+  getThemeColor,
+
+  // Theme
+  useMantineTheme, // theme object inside a component body
+  MantineThemeProvider, // theme override for a part of the tree
 } from '@mantine/core';
 ```
 
@@ -213,9 +218,9 @@ getStyles(
     styles?: Styles;
     props?: Record<string, any>; // props passed to classNames/styles functions
     variant?: string;         // applies the `{selector}--{variant}` class from the CSS module, if defined
-    focusable?: boolean;
-    active?: boolean;
-    withStaticClass?: boolean;
+    focusable?: boolean;      // adds the Mantine focus ring class (theme.focusRing) to this element
+    active?: boolean;         // adds the Mantine active (pressed) style class
+    withStaticClass?: boolean; // false to skip the static mantine-Name-selector class
   }
 ): { className: string; style: CSSProperties }
 ```
@@ -404,7 +409,7 @@ use `radius === undefined ? undefined : getRadius(radius)` when the CSS has its 
 
 ## Static properties
 
-These must be set on every component after creation:
+Set these on every component after creation (`varsResolver` only when the component has one):
 
 ```ts
 MyComponent.displayName = 'MyComponent';
@@ -417,3 +422,38 @@ MyComponent.Label = MyLabel;
 ```
 
 `.extend()` and `.withProps()` are added automatically by `factory()`.
+
+---
+
+## Data attributes with `mod`
+
+`Box` turns the `mod` prop into `data-*` attributes; falsy values are omitted. Use it for states that
+CSS should react to:
+
+```tsx
+<Box mod={{ active, disabled, orientation }} {...getStyles('root')} />
+// active={true} orientation="vertical" -> data-active data-orientation="vertical"
+```
+
+```css
+.root {
+  &[data-active] { background-color: var(--mantine-primary-color-light); }
+  &[data-orientation='vertical'] { flex-direction: column; }
+}
+```
+
+`variant` and `size` passed to `Box` become `data-variant` and `data-size` (size only for non-numeric values).
+
+---
+
+## Theme for a part of the tree
+
+To apply `theme.components` overrides to one subtree (a story, a section of a page), wrap it in
+`MantineThemeProvider`. It merges with the parent theme and does not inject CSS variables again,
+unlike a nested `MantineProvider`:
+
+```tsx
+<MantineThemeProvider theme={{ components: { MyComponent: MyComponent.extend({ defaultProps: { radius: 'xl' } }) } }}>
+  <MyComponent />
+</MantineThemeProvider>
+```

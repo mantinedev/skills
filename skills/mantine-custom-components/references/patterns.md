@@ -192,16 +192,18 @@ export type MyCardSectionFactory = Factory<{
 const defaultProps = {} satisfies Partial<MyCardSectionProps>;
 
 export const MyCardSection = factory<MyCardSectionFactory>((_props) => {
+  // The name is the theme key: theme.components.MyCardSection (no dot). Keep it equal to displayName
   const props = useProps('MyCardSection', defaultProps, _props);
-  const { className, style, classNames, styles, withBorder, children, ...others } = props;
+  const { className, style, classNames, styles, vars, withBorder, children, ...others } = props;
 
-  // Access styles from parent context
-  const { getStyles } = useMyCardContext();
+  // Access styles and shared settings from the parent context.
+  // Throws the createSafeContext message when rendered outside MyCard
+  const { getStyles, orientation } = useMyCardContext();
 
   return (
     <Box
-      {...getStyles('section', { className, style, classNames, styles })}
-      data-with-border={withBorder || undefined}
+      {...getStyles('section', { className, style, classNames, styles, props })}
+      mod={{ 'with-border': withBorder, orientation }}
       {...others}
     >
       {children}
@@ -248,6 +250,19 @@ MyCard.classes = classes;
 MyCard.Section = MyCardSection;   // attach sub-component
 ```
 
+How the pieces work together:
+
+- The root's `getStyles` goes into context, so `classNames`, `styles`, `vars` and `unstyled` passed to
+  the root reach elements rendered by sub-components. A sub-component's own `classNames` / `styles`
+  are merged on top through the `getStyles` options.
+- `compound: true` means the sub-component has no styles of its own in the theme: only `defaultProps`
+  can be set for it (`MyCardSection: MyCard.Section.extend({ defaultProps })`).
+- A sub-component cannot use `vars`. To give one item its own CSS variable (a per-item color), pass it
+  through `style`: `getStyles('section', { style: [{ '--section-color': getThemeColor(color, theme) }, style] })`
+  with `const theme = useMantineTheme()`.
+- Put shared settings (variant, size flags) in the context value next to `getStyles` and turn them
+  into data attributes with `mod`.
+
 ---
 
 ## Polymorphic component
@@ -276,7 +291,8 @@ export type MyLinkFactory = PolymorphicFactory<{
 
 const defaultProps = {} satisfies Partial<MyLinkProps>;
 
-export const MyLink = polymorphicFactory<MyLinkFactory>((_props) => {
+// `component` and `renderRoot` are not part of your props type: add them to the argument type to read them
+export const MyLink = polymorphicFactory<MyLinkFactory>((_props: MyLinkProps & { component?: any }) => {
   const props = useProps('MyLink', defaultProps, _props);
   const {
     classNames, className, style, styles, unstyled, vars, attributes,
@@ -311,12 +327,27 @@ MyLink.classes = classes;
 
 ---
 
+To set an attribute only for the default element (for example `type="button"`), read `component`:
+
+```tsx
+const { component = 'button', ...others } = props;
+
+<Box component={component} type={component === 'button' ? 'button' : undefined} {...getStyles('root', { focusable: true })} {...others} />
+```
+
+Callers can use `component="a"` (anchor attributes are then type-checked), `component={Link}` (the
+component's own required props are enforced), or `renderRoot={(props) => <a href="/x" {...props} />}`
+when `component` cannot be used. The `ref` type follows the rendered element.
+
+---
+
 ## Generic component
 
 For components where prop types depend on a generic parameter.
 
 ```tsx
-import { BoxProps, Factory, genericFactory, StylesApiProps, useProps } from '@mantine/core';
+import { Box, BoxProps, Factory, genericFactory, StylesApiProps, useProps, useStyles } from '@mantine/core';
+import classes from './MySelect.module.css';
 
 type SelectValue<M extends boolean> = M extends true ? string[] : string | null;
 
@@ -339,8 +370,15 @@ const defaultProps = { multiple: false } satisfies Partial<MySelectProps>;
 
 export const MySelect = genericFactory<MySelectFactory>((_props) => {
   const props = useProps('MySelect', defaultProps as any, _props);
-  const { multiple, value, onChange, ...others } = props;
-  // ...
+  const { classNames, className, style, styles, unstyled, vars, attributes, multiple, value, onChange, ...others } = props;
+
+  // The callback props are typed from `signature`; cast them to the non-generic props for useStyles
+  const getStyles = useStyles<MySelectFactory>({
+    name: 'MySelect', classes, props: props as MySelectProps,
+    className, style, classNames, styles, unstyled, vars, attributes,
+  });
+
+  return <Box {...getStyles('root')} {...others} />;
 });
 
 MySelect.displayName = 'MySelect';
