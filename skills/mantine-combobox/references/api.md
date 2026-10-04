@@ -22,6 +22,7 @@ interface UseComboboxOptions {
   onOpenedChange?: (opened: boolean) => void;
   onDropdownClose?: (eventSource: 'keyboard' | 'mouse' | 'unknown') => void;
   onDropdownOpen?: (eventSource: 'keyboard' | 'mouse' | 'unknown') => void;
+  // onDropdownOpen runs after the dropdown is mounted: option elements can be queried in it
   loop?: boolean;           // Default: true — keyboard nav wraps at boundaries
   scrollBehavior?: ScrollBehavior; // Default: 'instant'
 }
@@ -40,12 +41,16 @@ interface ComboboxStore {
   selectedOptionIndex: number;
   getSelectedOptionIndex(): number;       // -1 when nothing is selected
   selectOption(index: number): void;
-  selectActiveOption(): string | null;
-  selectFirstOption(): string | null;
+  selectActiveOption(): string | null;   // highlight the option with `active` prop (first option if none)
+  selectFirstOption(): string | null;    // highlight the first option that is not disabled
   selectNextOption(): string | null;
   selectPreviousOption(): string | null;
   resetSelectedOption(): void;
   clickSelectedOption(): void;
+  // Re-syncs the internal highlight index with the DOM. It runs in a timeout, after the next render,
+  // so it can be called right before the state update that changes the list.
+  // No argument ('selected'): keep the index on the highlighted option, or reset it if that option is gone.
+  // 'active': move the index to the active option WITHOUT highlighting it; with scrollIntoView it scrolls to it.
   updateSelectedOptionIndex(
     target?: 'active' | 'selected' | number,
     options?: { scrollIntoView?: boolean }
@@ -79,7 +84,8 @@ and `onSelectedOptionSubmit`. See the virtualized examples in the Combobox docum
   onOptionSubmit={fn}           // (value: string, optionProps) => void
   size="sm"                     // MantineSize | string, default: 'sm'
   dropdownPadding={4}           // any CSS padding value, 4px when not set
-  resetSelectionOnOptionHover   // boolean
+  resetSelectionOnOptionHover   // boolean — hovering an option removes the keyboard highlight
+  disabled                      // boolean — Popover prop, the dropdown cannot be opened
   readOnly                      // boolean — blocks keyboard interactions on the target only;
                                 // option clicks still call onOptionSubmit
   floatingHeight="viewport"     // dropdown fills the available viewport height, disables flip
@@ -121,7 +127,7 @@ Receives keyboard events for dropdown navigation. Used alongside `Combobox.Dropd
 </Combobox.Dropdown>
 ```
 
-Use `hidden` to hide the dropdown without unmounting it, for example when there are no options to show.
+Use `hidden` to hide the dropdown without unmounting it, for example when there are no options to show or the search query is empty. Prefer it to conditionally opening the store.
 
 ### Combobox.Options
 ```tsx
@@ -185,6 +191,8 @@ Built-in search input for the dropdown, wired to keyboard navigation. Render it 
 ```tsx
 <Combobox.ClearButton onClear={() => setValue(null)} />
 ```
+
+Rendered with `tabIndex={-1}` and `aria-hidden`: it is a mouse-only shortcut. Keyboard users clear the value by deleting the text.
 
 ### Combobox.HiddenInput
 ```tsx

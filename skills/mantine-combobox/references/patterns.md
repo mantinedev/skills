@@ -8,6 +8,9 @@
 - [Custom option rendering](#custom-option-rendering)
 - [Clear button](#clear-button)
 - [Form integration (hidden input)](#form-integration-hidden-input)
+- [Highlight the current value on open](#highlight-the-current-value-on-open)
+- [Creatable option](#creatable-option)
+- [Async search](#async-search)
 - [Search inside the dropdown](#search-inside-the-dropdown)
 - [Dropdown that fits the viewport](#dropdown-that-fits-the-viewport)
 - [Nothing found message](#nothing-found-message)
@@ -268,9 +271,145 @@ const rightSection = value ? (
 
 ---
 
+## Highlight the current value on open
+
+Mark the option that holds the value with `active`, then highlight it and scroll it into view when
+the dropdown opens:
+
+```tsx
+const combobox = useCombobox({
+  onDropdownClose: () => combobox.resetSelectedOption(),
+  onDropdownOpen: () => {
+    combobox.selectActiveOption(); // highlight
+    combobox.updateSelectedOptionIndex('active', { scrollIntoView: true }); // scroll to it
+  },
+});
+
+<Combobox.Option value={item} key={item} active={item === value}>
+  <Group gap="xs">
+    {item === value && <CheckIcon size={12} />}
+    {item}
+  </Group>
+</Combobox.Option>
+```
+
+`updateSelectedOptionIndex('active')` alone does not show a highlight.
+
+---
+
+## Creatable option
+
+Add a regular option with a reserved value and handle it in `onOptionSubmit`:
+
+```tsx
+const exactMatch = data.some((item) => item.toLowerCase() === search.trim().toLowerCase());
+
+<Combobox
+  store={combobox}
+  onOptionSubmit={(val) => {
+    if (val === '$create') {
+      onCreate(search.trim());
+    } else {
+      onChange(val);
+    }
+    setSearch('');
+  }}
+>
+  {/* target */}
+  <Combobox.Dropdown>
+    <Combobox.Options>
+      {options}
+      {!exactMatch && search.trim().length > 0 && (
+        <Combobox.Option value="$create">+ Create "{search.trim()}"</Combobox.Option>
+      )}
+    </Combobox.Options>
+  </Combobox.Dropdown>
+</Combobox>
+```
+
+---
+
+## Async search
+
+Keep the request state next to the search value. Highlight the first option in an effect when
+results arrive, hide the dropdown for an empty query with `hidden`, and keep focus in the input
+when the user clicks Retry.
+
+```tsx
+const [search, setSearch] = useState('');
+const [debounced] = useDebouncedValue(search, 300);
+const [state, setState] = useState<{ status: 'idle' | 'loading' | 'error' | 'done'; items: User[] }>({
+  status: 'idle',
+  items: [],
+});
+const requestId = useRef(0);
+
+const load = (query: string) => {
+  const id = ++requestId.current;
+  setState((current) => ({ ...current, status: 'loading' }));
+  searchUsers(query).then(
+    (items) => id === requestId.current && setState({ status: 'done', items }),
+    () => id === requestId.current && setState({ status: 'error', items: [] })
+  );
+};
+
+useEffect(() => {
+  if (debounced.trim()) {
+    load(debounced);
+  }
+}, [debounced]);
+
+useEffect(() => {
+  combobox.selectFirstOption(); // after results render; skips disabled options
+}, [state.items]);
+
+<Combobox store={combobox} onOptionSubmit={handleSubmit}>
+  <Combobox.Target>
+    <TextInput
+      value={search}
+      rightSection={state.status === 'loading' ? <Loader size="xs" /> : null}
+      onChange={(event) => {
+        setSearch(event.currentTarget.value);
+        combobox.openDropdown();
+      }}
+      onBlur={() => combobox.closeDropdown()}
+    />
+  </Combobox.Target>
+
+  <Combobox.Dropdown hidden={search.trim() === '' || state.status === 'idle'}>
+    <Combobox.Options>
+      {state.status === 'error' ? (
+        <Combobox.Empty>
+          Could not load users{' '}
+          <Anchor
+            component="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => load(debounced)}
+          >
+            Retry
+          </Anchor>
+        </Combobox.Empty>
+      ) : state.status === 'done' && state.items.length === 0 ? (
+        <Combobox.Empty>No users found</Combobox.Empty>
+      ) : (
+        state.items.map((user) => (
+          <Combobox.Option value={user.id} key={user.id} disabled={!user.active}>
+            {user.name}
+          </Combobox.Option>
+        ))
+      )}
+    </Combobox.Options>
+  </Combobox.Dropdown>
+</Combobox>
+```
+
+---
+
 ## Search inside the dropdown
 
-Button trigger with `Combobox.Search` in the dropdown. Focus the search input when the dropdown
+Button trigger with `Combobox.Search` in the dropdown. The button opens the dropdown with its own
+`onClick` and the search input handles the keyboard, so `targetType="button"` is not needed here and
+`withAriaAttributes={false}` keeps combobox ARIA attributes off the button. Focus the search input when the dropdown
 opens and return focus to the target when it closes. Call `combobox.updateSelectedOptionIndex()`
 whenever the options list changes, otherwise keyboard navigation keeps the old index.
 
