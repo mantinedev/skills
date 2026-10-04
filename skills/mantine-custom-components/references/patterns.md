@@ -6,6 +6,8 @@
 - [Compound component with context](#compound-component-with-context)
 - [Polymorphic component](#polymorphic-component)
 - [Generic component](#generic-component)
+- [Wrapping a Mantine component](#wrapping-a-mantine-component)
+- [Sub-components that need their index](#sub-components-that-need-their-index)
 - [Theme integration](#theme-integration)
 - [Namespace exports](#namespace-exports)
 
@@ -83,7 +85,6 @@ export interface MyComponentProps
   radius?: MantineRadius;
   padding?: MantineSpacing;
   size?: MantineFontSize;
-  variant?: MyComponentVariant;
 }
 
 export type MyComponentFactory = Factory<{
@@ -392,6 +393,107 @@ MySelect.displayName = 'MySelect';
 // TypeScript infers value as string[]
 <MySelect multiple value={vals} onChange={(v) => setVals(v)} />
 ```
+
+---
+
+## Wrapping a Mantine component
+
+A component that renders an existing Mantine component inside (an input with something extra
+around it) and accepts both its own selectors and the inner component's selectors in one
+`classNames` / `styles` prop:
+
+```tsx
+import {
+  __InputStylesNames, Box, extractStyleProps, Factory, factory, StylesApiProps, TextInput, TextInputProps,
+  useMantineTheme, useProps, useResolvedStylesApi, useStyles,
+} from '@mantine/core';
+import classes from './HintInput.module.css';
+
+export type HintInputStylesNames = 'hint' | __InputStylesNames; // own selectors + inner selectors
+
+export interface HintInputProps
+  extends Omit<TextInputProps, 'classNames' | 'styles' | 'vars' | 'attributes' | 'variant' | 'unstyled'>,
+    StylesApiProps<HintInputFactory> {
+  hint?: string;
+}
+
+export type HintInputFactory = Factory<{
+  props: HintInputProps;
+  ref: HTMLInputElement; // ref goes to the inner input through ...rest
+  stylesNames: HintInputStylesNames;
+}>;
+
+function mergeByKey<T>(merge: (a: T | undefined, b: T) => T, ...items: (Record<string, T | undefined> | undefined)[]) {
+  const result: Record<string, T> = {};
+  items.forEach((item) =>
+    Object.entries(item || {}).forEach(([key, value]) => {
+      if (value) {
+        result[key] = merge(result[key], value);
+      }
+    })
+  );
+  return result;
+}
+
+export const HintInput = factory<HintInputFactory>((_props) => {
+  const props = useProps('HintInput', null, _props);
+  const { classNames, styles, unstyled, vars, attributes, className, style, hint, ...others } = props;
+  const { styleProps, rest } = extractStyleProps(others); // mt, w... go to the outer element only
+  const theme = useMantineTheme();
+
+  // Own selectors: theme and props classNames/styles are handled by useStyles
+  const getStyles = useStyles<HintInputFactory>({
+    name: 'HintInput', classes, props, classNames, styles, unstyled, attributes,
+  });
+
+  // Inner selectors: turn function forms into objects, from props and from the theme entry of this component
+  const fromProps = useResolvedStylesApi<HintInputFactory>({ classNames, styles, props });
+  const fromTheme = useResolvedStylesApi<HintInputFactory>({
+    classNames: theme.components.HintInput?.classNames,
+    styles: theme.components.HintInput?.styles,
+    props,
+  });
+
+  return (
+    <Box className={className} style={style} {...styleProps}>
+      <TextInput
+        {...rest}
+        unstyled={unstyled}
+        classNames={mergeByKey<string>((a, b) => (a ? `${a} ${b}` : b), fromTheme.resolvedClassNames, fromProps.resolvedClassNames)}
+        styles={mergeByKey<React.CSSProperties>((a, b) => ({ ...a, ...b }), fromTheme.resolvedStyles, fromProps.resolvedStyles)}
+      />
+      {hint && <div {...getStyles('hint')}>{hint}</div>}
+    </Box>
+  );
+});
+
+HintInput.displayName = 'HintInput';
+HintInput.classes = classes;
+```
+
+- The inner component ignores keys that are not its selectors, so the merged objects can be passed whole.
+- `className`, `style` and style props are applied once, on the outer element. Everything else
+  (`label`, `error`, `value`, `onChange`, `ref`, `variant`, `size`...) goes to the inner component.
+- Theme default props of the inner component (`theme.components.TextInput.defaultProps`) still apply to it.
+- If no extra outer element is needed, render the inner component as the root and pass `className`,
+  `style` and style props straight through with the rest of the props.
+
+---
+
+## Sub-components that need their index
+
+`Stepper`-like components where each child must know its position (and the root the total count)
+cannot rely on `Children.map`: it breaks with fragments, conditional rendering and wrapper
+components. Let each sub-component register itself instead:
+
+- The root creates a small store once (`useRef`) and puts it in context next to `getStyles`.
+- Each sub-component registers its DOM node in the store from a ref callback and removes it on cleanup.
+- The store orders nodes by DOM position (`a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING`)
+  and notifies subscribers; sub-components read their index and the count with `useSyncExternalStore`.
+- Pass the count to `useStyles` as `stylesCtx` (memoized) so that `classNames`, `styles` and `vars`
+  functions receive it as `ctx`.
+- Keep the context value stable: `useStyles({ ..., stable: true })`, `useMemo` for the value, and a
+  ref-backed callback for handlers such as `onStepClick`. Then changing one step does not re-render the others.
 
 ---
 

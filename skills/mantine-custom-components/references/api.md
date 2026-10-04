@@ -203,7 +203,9 @@ useStyles<Payload extends FactoryPayload>(input: {
   vars?: PartialVarsResolver<Payload>;
   varsResolver?: VarsResolver<Payload>;
   attributes?: Attributes<Payload>;
-  stable?: boolean;              // return a referentially stable getStyles, for context values and memoized children
+  stable?: boolean;              // keep the same getStyles function between renders until one of its inputs
+                                 // (classNames, styles, vars, unstyled, stylesCtx, theme...) changes. Use it when
+                                 // getStyles goes into a context value, and memoize that value and stylesCtx yourself
 }): GetStylesApi<Payload>
 ```
 
@@ -348,7 +350,7 @@ Used inside compound components to share state from the parent to sub-components
 createSafeContext<ContextValue>(
   errorMessage: string   // thrown when hook is used outside the provider
 ): [
-  Context: React.Context<ContextValue | null>,
+  Provider: React.ComponentType<{ value: ContextValue; children: React.ReactNode }>,
   useContext: () => ContextValue     // throws errorMessage if used outside provider
 ]
 ```
@@ -402,6 +404,8 @@ Use these in `createVarsResolver` to convert Mantine size tokens to CSS values:
 | `getThemeColor(color, theme)` | `'blue'`, `'blue.7'`, `'#fff'` | CSS color value for a theme color, shade or any CSS color |
 
 Return `undefined` from a var resolver entry to leave that CSS variable unset (CSS fallback applies).
+The same holds for `vars` in the theme and in props: a key that is `undefined` keeps the component's own value.
+`getSize(undefined)`, `getFontSize(undefined)` and `getSpacing(undefined)` return `undefined`.
 `getSize(undefined)` returns `undefined`, but `getRadius(undefined)` returns `'var(--mantine-radius-default)'`:
 use `radius === undefined ? undefined : getRadius(radius)` when the CSS has its own fallback.
 
@@ -456,4 +460,38 @@ unlike a nested `MantineProvider`:
 <MantineThemeProvider theme={{ components: { MyComponent: MyComponent.extend({ defaultProps: { radius: 'xl' } }) } }}>
   <MyComponent />
 </MantineThemeProvider>
+```
+
+---
+
+## Theme functions: what they receive
+
+`classNames`, `styles` and `vars` in `Component.extend()` and in props can be functions:
+
+```ts
+MyComponent.extend({
+  classNames: (theme, props, ctx) => ({ root: props.variant === 'outline' ? 'is-outline' : undefined }),
+  styles: (theme, props, ctx) => ({ label: props.size === 'lg' ? { letterSpacing: 1 } : {} }),
+  vars: (theme, props, ctx) => ({ root: { '--my-height': props.size === 'lg' ? '50px' : undefined } }),
+});
+```
+
+`props` are the component props after default props are applied. `ctx` is the `stylesCtx` passed to
+`useStyles` (declare its type as `ctx` in the `Factory`). In a compound component the root's functions
+are also called for elements rendered by sub-components, with the root's `ctx`.
+
+## Custom variant colors
+
+`theme.variantColorResolver` is typed `VariantColorsResolver`; delegate to `defaultVariantColorsResolver`
+for the variants you do not change:
+
+```ts
+import { defaultVariantColorsResolver, VariantColorsResolver } from '@mantine/core';
+
+const variantColorResolver: VariantColorsResolver = (input) => {
+  if (input.variant === 'danger') {
+    return { background: '#e03131', hover: '#c92a2a', color: '#fff', border: '2px solid #c92a2a' };
+  }
+  return defaultVariantColorsResolver(input);
+};
 ```

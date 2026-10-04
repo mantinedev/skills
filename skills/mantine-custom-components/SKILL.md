@@ -123,6 +123,18 @@ For colors that follow the theme, resolve them in the vars resolver with
 `default`; `autoContrast: undefined` falls back to `theme.autoContrast`. For a single color use
 `getThemeColor(color, theme)`: it accepts `'blue'`, `'teal.7'` and CSS colors.
 
+```css
+.root {
+  background-color: var(--my-bg);
+  color: var(--my-color);
+  border: var(--my-bd); /* the whole shorthand, not border-color */
+}
+```
+
+Because the resolver comes from the theme, an app can add its own variant (`variant="danger"`) or
+recolor an existing one without touching the component. Do not redeclare `variant` in your props
+interface: `StylesApiProps` already types it as your variants plus any string.
+
 ## Factory variant — which to use
 
 | Scenario | Factory function | Type |
@@ -146,8 +158,8 @@ Factory<{
   staticComponents: {            // sub-components (compound pattern)
     Item: typeof MyComponentItem;
   };
-  compound?: boolean;            // true = sub-component; disables theme classNames/styles/vars
-  ctx?: MyContextType;           // passed to styles/vars resolvers as third arg
+  compound: true;                // only for sub-components; disables theme classNames/styles/vars
+  ctx: { stepsCount: number };   // only if needed; passed to classNames/styles/vars functions as third arg
   signature?: (...) => JSX.Element; // only for genericFactory
 }>
 ```
@@ -175,7 +187,7 @@ In `theme.components`, sub-components are registered without the dot: `MyCardSec
 
 Read the part that matches the task before writing code:
 
-- **[`references/patterns.md`](references/patterns.md)** — complete examples. Read "Compound component with context" for components with sub-components (`Card.Section`), "Polymorphic component" for a `component` prop, "Generic component" for props that depend on a type parameter, "Theme integration" for `extend` and `withProps`
+- **[`references/patterns.md`](references/patterns.md)** — complete examples. Read "Compound component with context" for components with sub-components (`Card.Section`), "Wrapping a Mantine component" when the component renders an existing Mantine input or component inside and must forward `classNames` / `styles` to it, "Polymorphic component" for a `component` prop, "Generic component" for props that depend on a type parameter, "Theme integration" for `extend` and `withProps`
 - **[`references/api.md`](references/api.md)** — every function and type: `factory` variants, `useProps`, `useStyles` and `getStyles` options, `createVarsResolver`, `createSafeContext`, `StylesApiProps`, `CompoundStylesApiProps`, `BoxProps` (including `mod`), `ElementProps`, theme helpers (`getSize`, `getRadius`, `getThemeColor`...)
 
 ## Looking things up
