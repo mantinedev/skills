@@ -6,6 +6,10 @@
 - [Compound component with context](#compound-component-with-context)
 - [Polymorphic component](#polymorphic-component)
 - [Generic component](#generic-component)
+- [Wrapping a Mantine component](#wrapping-a-mantine-component)
+- [Components that share theme configuration](#components-that-share-theme-configuration)
+- [Converting an existing component](#converting-an-existing-component)
+- [Sub-components that need their index](#sub-components-that-need-their-index)
 - [Theme integration](#theme-integration)
 - [Namespace exports](#namespace-exports)
 
@@ -41,7 +45,7 @@ export const Minimal = factory<MinimalFactory>((_props) => {
   );
 });
 
-Minimal.displayName = '@mantine/core/Minimal';
+Minimal.displayName = 'Minimal';
 ```
 
 ---
@@ -83,7 +87,6 @@ export interface MyComponentProps
   radius?: MantineRadius;
   padding?: MantineSpacing;
   size?: MantineFontSize;
-  variant?: MyComponentVariant;
 }
 
 export type MyComponentFactory = Factory<{
@@ -140,7 +143,7 @@ export const MyComponent = factory<MyComponentFactory>((_props) => {
   );
 });
 
-MyComponent.displayName = '@mantine/core/MyComponent';
+MyComponent.displayName = 'MyComponent';
 MyComponent.classes = classes;
 MyComponent.varsResolver = varsResolver;
 ```
@@ -192,16 +195,18 @@ export type MyCardSectionFactory = Factory<{
 const defaultProps = {} satisfies Partial<MyCardSectionProps>;
 
 export const MyCardSection = factory<MyCardSectionFactory>((_props) => {
+  // The name is the theme key: theme.components.MyCardSection (no dot). Keep it equal to displayName
   const props = useProps('MyCardSection', defaultProps, _props);
-  const { className, style, classNames, styles, withBorder, children, ...others } = props;
+  const { className, style, classNames, styles, vars, withBorder, children, ...others } = props;
 
-  // Access styles from parent context
-  const { getStyles } = useMyCardContext();
+  // Access styles and shared settings from the parent context.
+  // Throws the createSafeContext message when rendered outside MyCard
+  const { getStyles, orientation } = useMyCardContext();
 
   return (
     <Box
-      {...getStyles('section', { className, style, classNames, styles })}
-      data-with-border={withBorder || undefined}
+      {...getStyles('section', { className, style, classNames, styles, props })}
+      mod={{ 'with-border': withBorder, orientation }}
       {...others}
     >
       {children}
@@ -209,7 +214,7 @@ export const MyCardSection = factory<MyCardSectionFactory>((_props) => {
   );
 });
 
-MyCardSection.displayName = '@mantine/core/MyCardSection';
+MyCardSection.displayName = 'MyCardSection';
 ```
 
 **MyCard.tsx** (root component):
@@ -243,10 +248,23 @@ export const MyCard = factory<MyCardFactory>((_props) => {
   );
 });
 
-MyCard.displayName = '@mantine/core/MyCard';
+MyCard.displayName = 'MyCard';
 MyCard.classes = classes;
 MyCard.Section = MyCardSection;   // attach sub-component
 ```
+
+How the pieces work together:
+
+- The root's `getStyles` goes into context, so `classNames`, `styles`, `vars` and `unstyled` passed to
+  the root reach elements rendered by sub-components. A sub-component's own `classNames` / `styles`
+  are merged on top through the `getStyles` options.
+- `compound: true` means the sub-component has no styles of its own in the theme: only `defaultProps`
+  can be set for it (`MyCardSection: MyCard.Section.extend({ defaultProps })`).
+- A sub-component cannot use `vars`. To give one item its own CSS variable (a per-item color), pass it
+  through `style`: `getStyles('section', { style: [{ '--section-color': getThemeColor(color, theme) }, style] })`
+  with `const theme = useMantineTheme()`.
+- Put shared settings (variant, size flags) in the context value next to `getStyles` and turn them
+  into data attributes with `mod`.
 
 ---
 
@@ -259,6 +277,7 @@ import {
   Box, BoxProps, polymorphicFactory, PolymorphicFactory,
   StylesApiProps, useProps, useStyles,
 } from '@mantine/core';
+import classes from './MyLink.module.css';
 
 export type MyLinkStylesNames = 'root';
 
@@ -275,7 +294,8 @@ export type MyLinkFactory = PolymorphicFactory<{
 
 const defaultProps = {} satisfies Partial<MyLinkProps>;
 
-export const MyLink = polymorphicFactory<MyLinkFactory>((_props) => {
+// `component` and `renderRoot` are not part of your props type: add them to the argument type to read them
+export const MyLink = polymorphicFactory<MyLinkFactory>((_props: MyLinkProps & { component?: any }) => {
   const props = useProps('MyLink', defaultProps, _props);
   const {
     classNames, className, style, styles, unstyled, vars, attributes,
@@ -297,7 +317,7 @@ export const MyLink = polymorphicFactory<MyLinkFactory>((_props) => {
   );
 });
 
-MyLink.displayName = '@mantine/core/MyLink';
+MyLink.displayName = 'MyLink';
 MyLink.classes = classes;
 ```
 
@@ -310,12 +330,27 @@ MyLink.classes = classes;
 
 ---
 
+To set an attribute only for the default element (for example `type="button"`), read `component`:
+
+```tsx
+const { component = 'button', ...others } = props;
+
+<Box component={component} type={component === 'button' ? 'button' : undefined} {...getStyles('root', { focusable: true })} {...others} />
+```
+
+Callers can use `component="a"` (anchor attributes are then type-checked), `component={Link}` (the
+component's own required props are enforced), or `renderRoot={(props) => <a href="/x" {...props} />}`
+when `component` cannot be used. The `ref` type follows the rendered element.
+
+---
+
 ## Generic component
 
 For components where prop types depend on a generic parameter.
 
 ```tsx
-import { factory, Factory, genericFactory, useProps } from '@mantine/core';
+import { Box, BoxProps, Factory, genericFactory, StylesApiProps, useProps, useStyles } from '@mantine/core';
+import classes from './MySelect.module.css';
 
 type SelectValue<M extends boolean> = M extends true ? string[] : string | null;
 
@@ -338,12 +373,26 @@ const defaultProps = { multiple: false } satisfies Partial<MySelectProps>;
 
 export const MySelect = genericFactory<MySelectFactory>((_props) => {
   const props = useProps('MySelect', defaultProps as any, _props);
-  const { multiple, value, onChange, ...others } = props;
-  // ...
+  const { classNames, className, style, styles, unstyled, vars, attributes, multiple, value, onChange, ...others } = props;
+
+  // Inside the callback, props carry the free type parameter (MySelectProps<M>), which useStyles
+  // cannot accept: cast them to the non-generic props. `defaultProps as any` is needed for the same reason
+  const getStyles = useStyles<MySelectFactory>({
+    name: 'MySelect', classes, props: props as MySelectProps,
+    className, style, classNames, styles, unstyled, vars, attributes,
+  });
+
+  return <Box {...getStyles('root')} {...others} />;
 });
 
-MySelect.displayName = '@mantine/core/MySelect';
+MySelect.displayName = 'MySelect';
 ```
+
+A generic component can have static sub-components: add `staticComponents` to the same `Factory`
+next to `signature` and assign them (`MySelect.Option = MySelectOption`). With several type
+parameters (`<T, M extends boolean = false>`), use `props: MySelectProps<any, boolean>` in the
+`Factory`. A context cannot be generic: type its value with `any` for the item type
+(`createSafeContext<MyContextValue<any>>`) and keep the typed API on the root's props.
 
 **Usage:**
 ```tsx
@@ -353,6 +402,148 @@ MySelect.displayName = '@mantine/core/MySelect';
 // TypeScript infers value as string[]
 <MySelect multiple value={vals} onChange={(v) => setVals(v)} />
 ```
+
+---
+
+## Wrapping a Mantine component
+
+A component that renders an existing Mantine component inside (an input with something extra
+around it) and accepts both its own selectors and the inner component's selectors in one
+`classNames` / `styles` prop:
+
+```tsx
+import {
+  __InputStylesNames, Box, extractStyleProps, Factory, factory, StylesApiProps, TextInput, TextInputProps,
+  useMantineTheme, useProps, useResolvedStylesApi, useStyles,
+} from '@mantine/core';
+import classes from './HintInput.module.css';
+
+export type HintInputStylesNames = 'hint' | __InputStylesNames; // own selectors + inner selectors
+
+export interface HintInputProps
+  extends Omit<TextInputProps, 'classNames' | 'styles' | 'vars' | 'attributes' | 'variant' | 'unstyled'>,
+    StylesApiProps<HintInputFactory> {
+  hint?: string;
+}
+
+export type HintInputFactory = Factory<{
+  props: HintInputProps;
+  ref: HTMLInputElement; // ref goes to the inner input through ...rest
+  stylesNames: HintInputStylesNames;
+}>;
+
+function mergeByKey<T>(merge: (a: T | undefined, b: T) => T, ...items: (Record<string, T | undefined> | undefined)[]) {
+  const result: Record<string, T> = {};
+  items.forEach((item) =>
+    Object.entries(item || {}).forEach(([key, value]) => {
+      if (value) {
+        result[key] = merge(result[key], value);
+      }
+    })
+  );
+  return result;
+}
+
+export const HintInput = factory<HintInputFactory>((_props) => {
+  const props = useProps('HintInput', null, _props);
+  const { classNames, styles, unstyled, vars, attributes, className, style, hint, ...others } = props;
+  const { styleProps, rest } = extractStyleProps(others); // mt, w... go to the outer element only
+  const theme = useMantineTheme();
+
+  // Own selectors: theme and props classNames/styles are handled by useStyles
+  const getStyles = useStyles<HintInputFactory>({
+    name: 'HintInput', classes, props, classNames, styles, unstyled, attributes,
+  });
+
+  // Inner selectors: turn function forms into objects, from props and from the theme entry of this component
+  const fromProps = useResolvedStylesApi<HintInputFactory>({ classNames, styles, props });
+  const fromTheme = useResolvedStylesApi<HintInputFactory>({
+    classNames: theme.components.HintInput?.classNames,
+    styles: theme.components.HintInput?.styles,
+    props,
+  });
+
+  return (
+    <Box className={className} style={style} {...styleProps}>
+      <TextInput
+        {...rest}
+        unstyled={unstyled}
+        classNames={mergeByKey<string>((a, b) => (a ? `${a} ${b}` : b), fromTheme.resolvedClassNames, fromProps.resolvedClassNames)}
+        styles={mergeByKey<React.CSSProperties>((a, b) => ({ ...a, ...b }), fromTheme.resolvedStyles, fromProps.resolvedStyles)}
+      />
+      {hint && <div {...getStyles('hint')}>{hint}</div>}
+    </Box>
+  );
+});
+
+HintInput.displayName = 'HintInput';
+HintInput.classes = classes;
+```
+
+- The inner component ignores keys that are not its selectors, so the merged objects can be passed whole.
+- `className`, `style` and style props are applied once, on the outer element. Everything else
+  (`label`, `error`, `value`, `onChange`, `ref`, `variant`, `size`...) goes to the inner component.
+- Theme default props of the inner component (`theme.components.TextInput.defaultProps`) still apply to it.
+- If no extra outer element is needed, render the inner component as the root and pass `className`,
+  `style` and style props straight through with the rest of the props.
+
+---
+
+## Components that share theme configuration
+
+For a family built on one visual base (`Surface`, and `Panel` and `Callout` on top of it), pass the
+base name before the component's own name to both hooks:
+
+```tsx
+const props = useProps(['Surface', 'Panel'], defaultProps, _props);
+
+const getStyles = useStyles<PanelFactory>({
+  name: ['Surface', 'Panel'],
+  classes, props, className, style, classNames, styles, unstyled, vars, attributes, varsResolver,
+});
+```
+
+- Theme `defaultProps` for `Surface` apply to `Panel`; `Panel`'s own theme entry and props passed by
+  the caller win over them.
+- Theme `classNames`, `styles` and `vars` for `Surface` selectors apply to the same selectors of
+  `Panel`, and the root gets both static classes (`mantine-Surface-root mantine-Panel-root`).
+- Each component keeps its own `extend` and `withProps`.
+- Share the look by putting the base rules in one CSS module and adding its class to each
+  component's root class (`classes: { ...panelClasses, root: `${base.root} ${panelClasses.root}` }`),
+  and share variables by calling one plain function from each component's vars resolver.
+
+---
+
+## Converting an existing component
+
+Checklist for turning a plain React component (`forwardRef`, inline style objects, hard-coded
+colors) into a Mantine-style one:
+
+1. `forwardRef((props, ref) => ...)` becomes `factory<MyFactory>((_props) => ...)` with `ref` declared in the `Factory` type. Do not handle `ref` yourself: it flows to the root through `...others`.
+2. Default values in the parameter list become `defaultProps` passed to `useProps`, so that the theme can override them.
+3. Each static inline style object becomes a class in the CSS module and a selector in `stylesNames`; render the element with `getStyles('selector')`.
+4. Each style value computed from props becomes a CSS variable set in the vars resolver and read in CSS (`width: var(--stack-size)`).
+5. Size maps (`{ small: 24, medium: 36 }`) become token variables in CSS selected with `getSize(size, 'stack-size')`; boolean look props (`rounded`) become the Mantine prop (`radius` with `getRadius`).
+6. Hard-coded colors become theme variables or `light-dark()`; a color prop becomes `color` resolved with `getThemeColor` or `theme.variantColorResolver`.
+7. State kept only for styling (hovered, expanded) becomes CSS (`:hover`, `:focus-within`) or a `mod` data attribute.
+8. Keep `className`, `style` and the remaining props flowing to the root: `<Box {...getStyles('root')} {...others} />`.
+
+---
+
+## Sub-components that need their index
+
+`Stepper`-like components where each child must know its position (and the root the total count)
+cannot rely on `Children.map`: it breaks with fragments, conditional rendering and wrapper
+components. Let each sub-component register itself instead:
+
+- The root creates a small store once (`useRef`) and puts it in context next to `getStyles`.
+- Each sub-component registers its DOM node in the store from a ref callback and removes it on cleanup.
+- The store orders nodes by DOM position (`a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING`)
+  and notifies subscribers; sub-components read their index and the count with `useSyncExternalStore`.
+- Pass the count to `useStyles` as `stylesCtx` (memoized) so that `classNames`, `styles` and `vars`
+  functions receive it as `ctx`.
+- Keep the context value stable: `useStyles({ ..., stable: true })`, `useMemo` for the value, and a
+  ref-backed callback for handlers such as `onStepClick`. Then changing one step does not re-render the others.
 
 ---
 
@@ -375,13 +566,9 @@ const theme = createTheme({
         root: 'my-root-class',
         inner: 'my-inner-class',
       },
-      // Add inline styles to selectors
-      styles: {
-        root: { border: '1px solid red' },
-      },
-      // Or use a callback for theme-aware styles
+      // Add inline styles to selectors: an object, or a callback for theme-aware styles
       styles: (theme) => ({
-        root: { background: theme.colors.blue[0] },
+        root: { border: `1px solid ${theme.colors.blue[6]}` },
       }),
       // Override CSS variables
       vars: (_theme, props) => ({

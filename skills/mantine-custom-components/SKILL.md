@@ -12,6 +12,8 @@ description: >
 
 # Mantine Custom Components Skill
 
+Written for Mantine 9.x.
+
 ## Component template
 
 ```tsx
@@ -39,10 +41,11 @@ export type MyComponentFactory = Factory<{
   variant: MyComponentVariant;
 }>;
 
-const defaultProps = { radius: 'md' } satisfies Partial<MyComponentProps>;
+const defaultProps = {} satisfies Partial<MyComponentProps>;
 
 const varsResolver = createVarsResolver<MyComponentFactory>((_theme, { radius }) => ({
-  root: { '--my-radius': getRadius(radius) },
+  // undefined leaves the variable unset, so the CSS fallback (theme default radius) applies
+  root: { '--my-radius': radius === undefined ? undefined : getRadius(radius) },
 }));
 
 export const MyComponent = factory<MyComponentFactory>((_props) => {
@@ -57,9 +60,82 @@ export const MyComponent = factory<MyComponentFactory>((_props) => {
   return <Box {...getStyles('root')} {...others} />;
 });
 
-MyComponent.displayName = '@mantine/core/MyComponent';
+MyComponent.displayName = 'MyComponent';
 MyComponent.classes = classes;
+MyComponent.varsResolver = varsResolver;
 ```
+
+```css
+/* MyComponent.module.css */
+.root {
+  border-radius: var(--my-radius, var(--mantine-radius-default));
+}
+```
+
+`ref` is a regular prop in React 19: it arrives in `props` and reaches the root element through `...others`.
+
+What you get without extra code:
+
+- Every element rendered with `getStyles('selector')` gets the static class `mantine-MyComponent-selector`.
+- `classNames`, `styles`, `vars` and `attributes` props, and the same keys in `MyComponent.extend()` in the theme.
+- `unstyled` removes the CSS module classes. Static classes and the CSS variables on the root stay.
+- `MyComponent.extend()` and `MyComponent.withProps()` static functions. `withProps` presets props at
+  runtime but does not change types: a required prop stays required for TypeScript, so make props you
+  intend to preset optional.
+
+## Variants and sizes
+
+Pass `variant` and `size` to `Box`: it sets `data-variant` and `data-size` attributes to style in CSS.
+Passing `variant` to `getStyles` additionally applies the `root--{variant}` class when the CSS module defines one:
+
+```tsx
+const { variant, size, ...others } = props;
+
+<Box variant={variant} size={size} {...getStyles('root', { variant })} {...others} />
+```
+
+```css
+.root {
+  &[data-variant='outline'] { border: 1px solid var(--my-color); }
+  &[data-size='lg'] { height: 50px; }
+}
+```
+
+Sizes driven by one `size` prop: define the token values in CSS and select one with `getSize`. A
+number or any CSS value passed as `size` is used as is (`getSize(60, 'x')` returns `calc(3.75rem * var(--mantine-scale))`).
+
+```tsx
+root: { '--card-padding': getSize(size, 'card-padding'), '--card-fz': getFontSize(size) },
+```
+
+```css
+.root {
+  --card-padding-sm: 12px;
+  --card-padding-md: 16px;
+  --card-padding-lg: 24px;
+
+  padding: var(--card-padding, var(--card-padding-md));
+}
+```
+
+For colors that follow the theme, resolve them in the vars resolver with
+`theme.variantColorResolver({ color: color || theme.primaryColor, theme, variant: variant || 'filled', autoContrast })`
+— it returns `background`, `hover` and `color` as colors and `border` as a full `border` shorthand value
+(`1px solid transparent`). It knows the variants `filled`, `light`, `outline`, `subtle`, `transparent`, `white` and
+`default`; `autoContrast: undefined` falls back to `theme.autoContrast`. For a single color use
+`getThemeColor(color, theme)`: it accepts `'blue'`, `'teal.7'` and CSS colors.
+
+```css
+.root {
+  background-color: var(--my-bg);
+  color: var(--my-color);
+  border: var(--my-bd); /* the whole shorthand, not border-color */
+}
+```
+
+Because the resolver comes from the theme, an app can add its own variant (`variant="danger"`) or
+recolor an existing one without touching the component. Do not redeclare `variant` in your props
+interface: `StylesApiProps` already types it as your variants plus any string.
 
 ## Factory variant — which to use
 
@@ -70,6 +146,7 @@ MyComponent.classes = classes;
 | Props change based on a generic (e.g. `multiple`) | `genericFactory()` | `Factory<{ signature: ... }>` |
 
 Use `polymorphicFactory` sparingly — it adds TypeScript overhead and slows IDE autocomplete.
+Every factory component also accepts `renderRoot={(props) => <a {...props} />}` as an alternative to `component`.
 
 ## Factory type fields
 
@@ -83,8 +160,8 @@ Factory<{
   staticComponents: {            // sub-components (compound pattern)
     Item: typeof MyComponentItem;
   };
-  compound?: boolean;            // true = sub-component; disables theme classNames/styles/vars
-  ctx?: MyContextType;           // passed to styles/vars resolvers as third arg
+  compound: true;                // only for sub-components; disables theme classNames/styles/vars
+  ctx: { stepsCount: number };   // only if needed; passed to classNames/styles/vars functions as third arg
   signature?: (...) => JSX.Element; // only for genericFactory
 }>
 ```
@@ -106,7 +183,19 @@ const theme = createTheme({
 });
 ```
 
+In `theme.components`, sub-components are registered without the dot: `MyCardSection: MyCard.Section.extend({ defaultProps })`.
+
 ## References
 
-- **[`references/api.md`](references/api.md)** — All imports: `factory`, `useProps`, `useStyles`, `createVarsResolver`, `createSafeContext`, `StylesApiProps`, `CompoundStylesApiProps`, `BoxProps`, `ElementProps`, theme helpers (`getSize`, `getRadius`, etc.)
-- **[`references/patterns.md`](references/patterns.md)** — Full examples: compound components with context, polymorphic component, generic component, theme integration
+Read the part that matches the task before writing code:
+
+- **[`references/patterns.md`](references/patterns.md)** — complete examples. Read "Compound component with context" for components with sub-components (`Card.Section`), "Wrapping a Mantine component" when the component renders an existing Mantine input or component inside and must forward `classNames` / `styles` to it, "Components that share theme configuration" for a family of components with a common base, "Converting an existing component" when migrating a `forwardRef` component with inline styles, "Polymorphic component" for a `component` prop, "Generic component" for props that depend on a type parameter, "Theme integration" for `extend` and `withProps`
+- **[`references/api.md`](references/api.md)** — read it for any component beyond the template above: it is the only place that documents `getStyles` options (`focusable`), the `mod` prop, theme helper outputs, `MantineThemeProvider` and what theme functions receive. Every function and type: `factory` variants, `useProps`, `useStyles` and `getStyles` options, `createVarsResolver`, `createSafeContext`, `StylesApiProps`, `CompoundStylesApiProps`, `BoxProps` (including `mod`), `ElementProps`, theme helpers (`getSize`, `getRadius`, `getThemeColor`...)
+
+## Looking things up
+
+If the references do not cover what you need, do not guess:
+
+- If the Mantine MCP server (`@mantine/mcp-server`) is connected, use `search_docs`, `get_item_doc` and `get_api`
+- Otherwise fetch `https://mantine.dev/llms.txt` and open the Styles API, variants and sizes, and custom components pages
+

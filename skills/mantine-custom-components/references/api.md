@@ -4,7 +4,7 @@
 - [Imports cheatsheet](#imports-cheatsheet)
 - [factory / polymorphicFactory / genericFactory](#factory--polymorphicfactory--genericfactory)
 - [Factory type fields](#factory-type-fields)
-- [useProps](#usepropss)
+- [useProps](#useprops)
 - [useStyles](#usestyles)
 - [createVarsResolver](#createvarsresolver)
 - [StylesApiProps and CompoundStylesApiProps](#stylesapiprops-and-compoundstylesapiprops)
@@ -12,6 +12,11 @@
 - [createSafeContext](#createsafecontext)
 - [Theme helper functions](#theme-helper-functions)
 - [Static properties](#static-properties)
+- [Data attributes with `mod`](#data-attributes-with-mod)
+- [Theme for a part of the tree](#theme-for-a-part-of-the-tree)
+- [Theme functions: what they receive](#theme-functions-what-they-receive)
+- [Custom variant colors](#custom-variant-colors)
+- [Writing the CSS module](#writing-the-css-module)
 
 ---
 
@@ -54,6 +59,11 @@ import {
   getShadow,
   rem,
   em,
+  getThemeColor,
+
+  // Theme
+  useMantineTheme, // theme object inside a component body
+  MantineThemeProvider, // theme override for a part of the tree
 } from '@mantine/core';
 ```
 
@@ -158,14 +168,17 @@ Merges default props from three sources in priority order (highest → lowest):
 3. Component-level `defaultProps`
 
 ```ts
-useProps<T extends Record<string, any>>(
-  componentName: string,    // must match the name used in theme.components
-  defaultProps: Partial<T>, // use 'satisfies Partial<T>' for correct inference
+useProps<T extends Record<string, any>, U extends Partial<T> | null>(
+  component: string | (string | undefined)[], // must match the name used in theme.components
+  defaultProps: U,                             // object or null
   props: T
-): T
+): T // keys present in defaultProps become non-optional in the result
 ```
 
-**Important:** Always call `useProps` before destructuring. Always use `satisfies Partial<Props>` (not `: Partial<Props>`) for `defaultProps` to preserve narrowed types.
+**Important:** Always call `useProps` before destructuring. Always use `satisfies Partial<Props>` (not `: Partial<Props>`) for `defaultProps` to preserve narrowed types. Pass `null` when the component has no default props.
+
+An array of names shares theme configuration between components. Later names win:
+`useProps(['Input', 'MyInput'], defaultProps, _props)` applies `theme.components.Input.defaultProps` first, then `MyInput`.
 
 ```ts
 const defaultProps = { size: 'md', variant: 'filled' } satisfies Partial<MyProps>;
@@ -182,7 +195,9 @@ Returns a `getStyles` function that provides `className` and `style` for each St
 
 ```ts
 useStyles<Payload extends FactoryPayload>(input: {
-  name: string | string[];       // component name(s) for static CSS class generation
+  name: string | (string | undefined)[]; // component name(s). With an array, theme classNames, styles and vars of
+                                         // every name are applied in order and each name gets a static class
+                                         // (mantine-Surface-root mantine-Panel-root)
   classes: Record<string, string>; // CSS module classes object
   props: Payload['props'];
   stylesCtx?: Payload['ctx'];    // optional context for styles/vars resolvers
@@ -195,6 +210,9 @@ useStyles<Payload extends FactoryPayload>(input: {
   vars?: PartialVarsResolver<Payload>;
   varsResolver?: VarsResolver<Payload>;
   attributes?: Attributes<Payload>;
+  stable?: boolean;              // keep the same getStyles function between renders until one of its inputs
+                                 // (classNames, styles, vars, unstyled, stylesCtx, theme...) changes. Use it when
+                                 // getStyles goes into a context value, and memoize that value and stylesCtx yourself
 }): GetStylesApi<Payload>
 ```
 
@@ -203,11 +221,15 @@ useStyles<Payload extends FactoryPayload>(input: {
 getStyles(
   selector: StylesNames,
   options?: {
-    className?: string;   // additional className merged in
-    style?: CSSProperties; // additional style merged in
-    focusable?: boolean;
-    active?: boolean;
-    withStaticClass?: boolean;
+    className?: string;      // additional className merged in
+    style?: MantineStyleProp; // additional style merged in
+    classNames?: ClassNames;  // Styles API overrides of a parent, used in compound components
+    styles?: Styles;
+    props?: Record<string, any>; // props passed to classNames/styles functions
+    variant?: string;         // applies the `{selector}--{variant}` class from the CSS module, if defined
+    focusable?: boolean;      // adds the Mantine focus ring class (theme.focusRing) to this element
+    active?: boolean;         // adds the Mantine active (pressed) style class
+    withStaticClass?: boolean; // false to skip the static mantine-Name-selector class
   }
 ): { className: string; style: CSSProperties }
 ```
@@ -308,6 +330,7 @@ interface BoxProps extends MantineStyleProps {
 | `bdrs` | border-radius | `opacity` | opacity |
 | `pos` | position | `top` `left` `bottom` `right` `inset` | positioning |
 | `display` | display | `flex` | flex |
+| `mis` `mie` `pis` `pie` | margin/padding inline start/end | `bgsz` `bgp` `bgr` `bga` | background size/position/repeat/attachment |
 
 **`ElementProps`** — gets HTML element props, remapping `style` to Mantine's type:
 ```ts
@@ -334,7 +357,7 @@ Used inside compound components to share state from the parent to sub-components
 createSafeContext<ContextValue>(
   errorMessage: string   // thrown when hook is used outside the provider
 ): [
-  Context: React.Context<ContextValue | null>,
+  Provider: React.ComponentType<{ value: ContextValue; children: React.ReactNode }>,
   useContext: () => ContextValue     // throws errorMessage if used outside provider
 ]
 ```
@@ -377,25 +400,30 @@ Use these in `createVarsResolver` to convert Mantine size tokens to CSS values:
 
 | Function | Input | Output example |
 |---|---|---|
-| `getSize(size, prefix)` | `'sm'`, `'button-height'` | `'var(--mantine-button-height-sm)'` |
-| `getSpacing(size)` | `'md'` or `16` | `'var(--mantine-spacing-md)'` or `'1rem'` |
-| `getRadius(size)` | `'sm'` or `4` | `'var(--mantine-radius-sm)'` or `'0.25rem'` |
+| `getSize(size, prefix)` | `'sm'`, `'button-height'` | `'var(--button-height-sm)'` (define `--button-height-sm` etc. in your CSS) |
+| `getSpacing(size)` | `'md'` or `16` | `'var(--mantine-spacing-md)'` or `'calc(1rem * var(--mantine-scale))'` |
+| `getRadius(size)` | `'sm'` or `4` | `'var(--mantine-radius-sm)'` or `'calc(0.25rem * var(--mantine-scale))'` |
 | `getFontSize(size)` | `'sm'` | `'var(--mantine-font-size-sm)'` |
 | `getLineHeight(size)` | `'sm'` | `'var(--mantine-line-height-sm)'` |
 | `getShadow(size)` | `'md'` | `'var(--mantine-shadow-md)'` |
-| `rem(value)` | `16` | `'1rem'` |
+| `rem(value)` | `16` | `'calc(1rem * var(--mantine-scale))'` |
 | `em(value)` | `16` | `'1em'` |
+| `getThemeColor(color, theme)` | `'blue'`, `'blue.7'`, `'#fff'` | CSS color value for a theme color, shade or any CSS color |
 
 Return `undefined` from a var resolver entry to leave that CSS variable unset (CSS fallback applies).
+The same holds for `vars` in the theme and in props: a key that is `undefined` keeps the component's own value.
+`getSize(undefined)`, `getFontSize(undefined)` and `getSpacing(undefined)` return `undefined`.
+`getSize(undefined)` returns `undefined`, but `getRadius(undefined)` returns `'var(--mantine-radius-default)'`:
+use `radius === undefined ? undefined : getRadius(radius)` when the CSS has its own fallback.
 
 ---
 
 ## Static properties
 
-These must be set on every component after creation:
+Set these on every component after creation (`varsResolver` only when the component has one):
 
 ```ts
-MyComponent.displayName = '@mantine/core/MyComponent'; // or '@mantine/package/Name'
+MyComponent.displayName = 'MyComponent';
 MyComponent.classes = classes;                          // CSS module classes object
 MyComponent.varsResolver = varsResolver;               // only if component defines vars
 
@@ -405,3 +433,106 @@ MyComponent.Label = MyLabel;
 ```
 
 `.extend()` and `.withProps()` are added automatically by `factory()`.
+
+---
+
+## Data attributes with `mod`
+
+`Box` turns the `mod` prop into `data-*` attributes; falsy values are omitted. Use it for states that
+CSS should react to:
+
+```tsx
+<Box mod={{ active, disabled, orientation }} {...getStyles('root')} />
+// active={true} orientation="vertical" -> data-active data-orientation="vertical"
+```
+
+```css
+.root {
+  &[data-active] { background-color: var(--mantine-primary-color-light); }
+  &[data-orientation='vertical'] { flex-direction: column; }
+}
+```
+
+`variant` and `size` passed to `Box` become `data-variant` and `data-size` (size only for non-numeric values).
+Keys are written in camelCase or kebab-case (`expandOnHover` becomes `data-expand-on-hover`). To keep a
+`mod` passed by the user, merge with an array: `mod={[{ active }, mod]}`.
+
+Type a size prop that accepts tokens and custom values as `MantineSize | (string & {}) | number`.
+
+---
+
+## Theme for a part of the tree
+
+To apply `theme.components` overrides to one subtree (a story, a section of a page), wrap it in
+`MantineThemeProvider`. It merges with the parent theme and does not inject CSS variables again,
+unlike a nested `MantineProvider`:
+
+```tsx
+<MantineThemeProvider theme={{ components: { MyComponent: MyComponent.extend({ defaultProps: { radius: 'xl' } }) } }}>
+  <MyComponent />
+</MantineThemeProvider>
+```
+
+---
+
+## Theme functions: what they receive
+
+`classNames`, `styles` and `vars` in `Component.extend()` and in props can be functions:
+
+```ts
+MyComponent.extend({
+  classNames: (theme, props, ctx) => ({ root: props.variant === 'outline' ? 'is-outline' : undefined }),
+  styles: (theme, props, ctx) => ({ label: props.size === 'lg' ? { letterSpacing: 1 } : {} }),
+  vars: (theme, props, ctx) => ({ root: { '--my-height': props.size === 'lg' ? '50px' : undefined } }),
+});
+```
+
+`props` are the component props after default props are applied. `ctx` is the `stylesCtx` passed to
+`useStyles` (declare its type as `ctx` in the `Factory`). In a compound component the root's functions
+are also called for elements rendered by sub-components, with the root's `ctx`.
+
+## Custom variant colors
+
+`theme.variantColorResolver` is typed `VariantColorsResolver`; delegate to `defaultVariantColorsResolver`
+for the variants you do not change:
+
+```ts
+import { defaultVariantColorsResolver, VariantColorsResolver } from '@mantine/core';
+
+const variantColorResolver: VariantColorsResolver = (input) => {
+  if (input.variant === 'danger') {
+    return { background: '#e03131', hover: '#c92a2a', color: '#fff', border: '2px solid #c92a2a' };
+  }
+  return defaultVariantColorsResolver(input);
+};
+```
+
+---
+
+## Writing the CSS module
+
+The project CSS goes through `postcss-preset-mantine`, which adds:
+
+```css
+.root {
+  /* value for light scheme, value for dark scheme */
+  background-color: light-dark(var(--mantine-color-white), var(--mantine-color-dark-6));
+  padding: rem(12px); /* px to rem that follows theme.scale */
+
+  @mixin hover {
+    /* :hover on devices with a pointer, :active on touch devices */
+    background-color: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-5));
+  }
+
+  &[data-active] { /* attributes from the mod prop */ }
+}
+```
+
+Theme variables that follow the color scheme by themselves: `--mantine-color-body` (page background),
+`--mantine-color-text`, `--mantine-color-dimmed`, `--mantine-color-default-border`,
+`--mantine-primary-color-filled`, `--mantine-primary-color-light`, `--mantine-color-{name}-filled`,
+`--mantine-color-{name}-light`, `--mantine-color-{name}-light-color`.
+
+The `vars` prop and `vars` in the theme are functions: `vars={(theme, props) => ({ root: { '--my-ring': 'hotpink' } })}`.
+A variable that is declared in the `Factory` `vars` type but never set by the resolver is fine: give
+it a fallback in CSS (`var(--my-ring, var(--mantine-color-body))`) and users can still set it.
