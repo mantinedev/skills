@@ -15,6 +15,11 @@ Use when: creating a custom select-like component, building a searchable dropdow
 npx skills add https://github.com/mantinedev/skills --skill mantine-combobox
 ```
 
+Example prompts:
+
+- "Build a searchable user picker with avatars in the options and server-side search"
+- "Add a branch switcher dropdown to the toolbar: button trigger, search inside, long list"
+
 ---
 
 ### `mantine-form`
@@ -27,6 +32,11 @@ Use when: setting up a form with `useForm`, adding validation rules or async val
 npx skills add https://github.com/mantinedev/skills --skill mantine-form
 ```
 
+Example prompts:
+
+- "Build a checkout form validated with zod: billing address is required only when it differs from shipping"
+- "Add an invoice form with a list of line items, per-line validation and server errors shown on fields"
+
 ---
 
 ### `mantine-custom-components`
@@ -38,6 +48,11 @@ Use when: creating a new component using `factory()`, `polymorphicFactory()`, or
 ```sh
 npx skills add https://github.com/mantinedev/skills --skill mantine-custom-components
 ```
+
+Example prompts:
+
+- "Create a StatCard component with variants, sizes and Styles API that can be configured from the theme"
+- "Convert src/AvatarStack.tsx to a Mantine-style component: CSS module, CSS variables, no inline styles"
 
 ## Install All Skills
 
