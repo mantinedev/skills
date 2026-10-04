@@ -10,6 +10,11 @@
 - [Multi-step form](#multi-step-form)
 - [Loading initial values](#loading-initial-values)
 - [Saving and new baseline](#saving-and-new-baseline)
+- [Reusing one form for different records](#reusing-one-form-for-different-records)
+- [Focusing the first invalid field](#focusing-the-first-invalid-field)
+- [Several submit buttons](#several-submit-buttons)
+- [Changing a value while the user types](#changing-a-value-while-the-user-types)
+- [Setting sibling fields from one field](#setting-sibling-fields-from-one-field)
 - [Controlling a form from outside](#controlling-a-form-from-outside)
 - [Custom inputs](#custom-inputs)
 - [Form context across components](#form-context-across-components)
@@ -327,6 +332,111 @@ Per-field state: `form.isDirty('email')` during render, `form.resetField('email'
 
 ---
 
+## Reusing one form for different records
+
+`initialize` works once. For a form that stays mounted and is opened for different records (an
+edit dialog over a table), set new initial values and reset. This replaces values and clears
+errors, touched and dirty state from the previous record:
+
+```tsx
+const openFor = (user: UserValues) => {
+  form.setInitialValues(user);
+  form.reset();
+  setOpened(true);
+};
+
+<Button type="submit" disabled={!form.isDirty()}>Save</Button>
+```
+
+`form.isDirty()` compares with the values the form was opened with, so it is `false` again when
+a change is reverted.
+
+---
+
+## Focusing the first invalid field
+
+Use the second argument of `form.onSubmit` and `form.getInputNode`. Errors are keyed by path in no
+particular order, so keep your own list of fields in visual order:
+
+```tsx
+const FIELDS_IN_ORDER = ['firstName', 'lastName', 'email', 'address.city'] as const;
+
+const handleErrors = (errors: FormErrors) => {
+  const firstInvalid = FIELDS_IN_ORDER.find((path) => errors[path]);
+  if (firstInvalid) {
+    form.getInputNode(firstInvalid)?.focus();
+  }
+};
+
+<form onSubmit={form.onSubmit(handleSubmit, handleErrors)}>
+```
+
+Call the same function after `form.setErrors(serverErrors)` to focus the first field rejected by a server.
+
+---
+
+## Several submit buttons
+
+For a second action that validates less ("Save draft"), validate the fields it needs and read the
+values yourself instead of going through `form.onSubmit`:
+
+```tsx
+const handleSaveDraft = () => {
+  const { hasError } = form.validateField('name');
+  if (!hasError) {
+    saveDraft(form.getTransformedValues());
+  }
+};
+
+<Button type="submit">Publish</Button>
+<Button variant="default" onClick={handleSaveDraft}>Save draft</Button>
+```
+
+---
+
+## Changing a value while the user types
+
+To transform what the user types (uppercase, strip characters), control that one input with
+`useWatchValue` and `setFieldValue`. Do not add `key` to it: `setFieldValue` changes the key, which
+would remount the input and lose focus.
+
+```tsx
+const code = form.useWatchValue('warehouseCode');
+
+<PinInput
+  value={code}
+  onChange={(value) => form.setFieldValue('warehouseCode', value.toUpperCase())}
+  error={!!form.errors.warehouseCode}
+/>
+```
+
+---
+
+## Setting sibling fields from one field
+
+Spread `getInputProps`, then override `onChange`, call the original and set the other fields:
+
+```tsx
+const productProps = form.getInputProps(`lines.${index}.productId`);
+
+<Select
+  data={products}
+  key={form.key(`lines.${index}.productId`)}
+  {...productProps}
+  onChange={(value) => {
+    productProps.onChange(value);
+    const product = catalogue.find((item) => item.id === value);
+    if (product) {
+      form.setFieldValue(`lines.${index}.unitPrice`, product.price);
+    }
+  }}
+/>
+```
+
+`setFieldValue` updates the other input (its `key` changes) and clears its error.
+
+---
+
 ## Controlling a form from outside
 
 A toolbar or another component that is not a child of the form can control it with
@@ -528,7 +638,9 @@ function EmailField() {
 
 ## Server errors after submission
 
-Set server-side errors on fields after a failed API call.
+Set server-side errors on fields after a failed API call. Keys are dot paths, so list items work
+too (`'lines.2.quantity'`). A server error is cleared when the user changes that field. For an
+error that does not belong to a field, keep it in your own state.
 
 ```tsx
 const form = useForm({ mode: 'uncontrolled', initialValues: { email: '', password: '' } });

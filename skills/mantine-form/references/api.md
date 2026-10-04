@@ -52,7 +52,7 @@ useForm<Values, TransformedValues>({
 | `validate` | `FormRulesRecord<Values> \| (values) => FormErrors \| Promise<FormErrors>` | — | Rules object, function, or `schemaResolver(schema)` |
 | `validateInputOnChange` | `boolean \| string[]` | `false` | Validate on change (all or named fields). Use `FORM_INDEX` for list items: `` `jobs.${FORM_INDEX}.title` `` |
 | `validateInputOnBlur` | `boolean \| string[]` | `false` | Validate on blur (all or named fields), supports `FORM_INDEX` |
-| `clearInputErrorOnChange` | `boolean` | `true` | Clear field error when its value changes |
+| `clearInputErrorOnChange` | `boolean` | `true` | Clear field error when its value changes. Applies to errors set with `setErrors` and `setFieldError` as well |
 | `transformValues` | `(values: Values) => TransformedValues` | identity | Transform values before they reach `onSubmit` handler |
 | `onValuesChange` | `(values, previous) => void` | — | Called whenever any value changes |
 | `enhanceGetInputProps` | `({ inputProps, field, options, form }) => object \| void` | — | Merge extra props into every `getInputProps` call, for example `({ form }) => ({ disabled: form.submitting })` |
@@ -83,7 +83,7 @@ useForm<Values, TransformedValues>({
 |---|---|---|
 | `getValues` | `() => Values` | Get current values snapshot |
 | `getInitialValues` | `() => Values` | Get initial values snapshot |
-| `setValues` | `(values: Partial<Values> \| (prev) => Partial<Values>) => void` | Merge partial values into form state |
+| `setValues` | `(values: Partial<Values> \| (prev) => Partial<Values>) => void` | Merge partial values into form state. Does not clear errors, call `clearErrors()` if needed |
 | `setFieldValue` | `(path, value \| updater) => void` | Set a single field by dot-path |
 | `setInitialValues` | `(values: Values) => void` | Update the initial values that `reset` returns to. Does not change dirty state, call `resetDirty(values)` as well |
 | `initialize` | `(values: Values) => void` | Set values and initial values, mark the form as initialized. The form is not dirty afterwards. Works once, later calls are ignored. Use it for values loaded from a server |
@@ -94,7 +94,7 @@ useForm<Values, TransformedValues>({
 
 | Method | Signature | Description |
 |---|---|---|
-| `setErrors` | `(errors: FormErrors \| (prev) => FormErrors) => void` | Replace all errors |
+| `setErrors` | `(errors: FormErrors \| (prev) => FormErrors) => void` | Replace all errors. Keys are dot paths, list items included: `{ 'lines.2.quantity': 'Not enough stock' }`. `null`, `undefined` and `false` values are dropped |
 | `setFieldError` | `(path, error: ReactNode) => void` | Set one field's error |
 | `clearFieldError` | `(path) => void` | Clear one field's error |
 | `clearErrors` | `() => void` | Clear all errors |
@@ -104,7 +104,7 @@ useForm<Values, TransformedValues>({
 | Method | Signature | Description |
 |---|---|---|
 | `isDirty` | `(path?) => boolean` | True if field (or any field) differs from initial value |
-| `isTouched` | `(path?) => boolean` | True if field (or any field) has been interacted with |
+| `isTouched` | `(path?) => boolean` | True if field (or any field) has been interacted with. With `touchTrigger: 'focus'` a field is touched as soon as it is focused |
 | `getDirty` | `() => FormStatus` | All dirty flags |
 | `getTouched` | `() => FormStatus` | All touched flags |
 | `setDirty` | `(status: FormStatus \| (prev) => FormStatus) => void` | Overwrite dirty flags |
@@ -148,7 +148,7 @@ Before 9.7, the `useForm` returned by `createFormContext` loses this inference: 
 | Method | Signature | Description |
 |---|---|---|
 | `getInputProps` | `(path, options?) => object` | Returns `{ value, onChange, error, onFocus, onBlur }` to spread on an input (`defaultValue` instead of `value` in uncontrolled mode). `onChange` accepts a change event or a raw value |
-| `getInputNode` | `(path) => HTMLElement \| null` | Get the DOM node for a field (uncontrolled mode) |
+| `getInputNode` | `(path) => HTMLElement \| null` | Get the DOM node of the input that received `getInputProps(path)` (found by its `data-path` attribute), for example to focus it |
 | `key` | `(path) => string` | React `key` for the input. Required on every input in uncontrolled mode |
 
 **`getInputProps` options:**
@@ -166,7 +166,9 @@ Before 9.7, the `useForm` returned by `createFormContext` loses this inference: 
 | Method | Signature | Description |
 |---|---|---|
 | `watch` | `(path, subscriber) => void` | Subscribe to a field's changes with a callback, does not rerender. Uses `useEffect` inside: call it at the top level of the component like a hook. For an array path it also fires on nested changes and list operations |
-| `useWatchValue` | `(path) => value` | Hook: returns the field value and rerenders the component when it changes. Works in both modes |
+| `useWatchValue` | `(path) => value` | Hook: returns the field value and rerenders the component when it changes. Works in both modes. For values derived from a whole list (totals, counts), subscribe with `watch('lines', ...)` instead |
+
+`watch` and `useWatchValue` can be called in any component that has the `form` object, including child components that receive it through props or context.
 
 `watch` subscriber receives `{ value, previousValue, touched, dirty }`.
 
@@ -317,7 +319,7 @@ validate: {
 
 // Function — receives full values, returns errors object
 validate: (values) => ({
-  endDate: values.endDate <= values.startDate ? 'Must be after start date' : null,
+  endDate: values.endDate < values.startDate ? 'End must be after start' : null,
 })
 
 // Async — return a Promise from any rule
@@ -331,6 +333,8 @@ validate: {
 ```
 
 In 9.6 and earlier the `formRootRule` of a list nested in a list item is typed with the item instead of the array (the runtime value is the array): read the array from the second argument, `values.employees[index].skills`, with the index taken from the path.
+
+Rules are read on every render, so they can use props and state of the component directly.
 
 Validators receive `(value, allValues, fieldPath, abortSignal?)`. For list items `fieldPath` includes the index: `'employees.1.name'`. The `abortSignal` is provided for async rules — check `signal.aborted` before applying stale results.
 

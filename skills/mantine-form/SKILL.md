@@ -66,6 +66,14 @@ Checkboxes and switches need `{ type: 'checkbox' }`:
 For standalone radios without `Radio.Group`, use `form.getInputProps('color', { type: 'radio', value: 'red' })`
 and add `key={form.key('color')}` to each radio.
 
+Components without an `error` prop (`Slider`, `RangeSlider`, `Rating`, `SegmentedControl`, `Chip.Group`)
+need `{ withError: false }`, and you render the error yourself:
+
+```tsx
+<Slider key={form.key('stock')} {...form.getInputProps('stock', { withError: false })} />
+{form.errors.stock && <Text c="red" size="sm">{form.errors.stock}</Text>}
+```
+
 ### 3. Handle submission
 
 ```tsx
@@ -138,6 +146,10 @@ validateInputOnBlur: ['email'],         // same options, on blur
 validateInputOnBlur: [`members.${FORM_INDEX}.email`], // list items, FORM_INDEX is exported from @mantine/form
 ```
 
+With validation on blur, an error that appears when the user presses the submit button shifts the
+layout, and the click can miss the button. Keep the submit button in a place that does not move
+when errors appear (for example a footer with fixed position), or validate on change instead.
+
 ## Modes
 
 |                                  | `'uncontrolled'` (recommended)      | `'controlled'` (default) |
@@ -164,9 +176,9 @@ const shipsInternationally = form.useWatchValue('shipsInternationally');
 
 ## References
 
-Read the reference that matches the task before writing code:
+For anything beyond a basic form, read both references before writing code:
 
-- **[`references/patterns.md`](references/patterns.md)** — read for: nested objects, array fields, lists inside lists and `formRootRule`, async validation (rules and async schemas), conditional fields, conditional validation, multi-step forms, loading initial values from a server, saving and setting a new baseline, controlling a form from outside its component, custom inputs, form context across components, `transformValues`, standalone `useField`, server errors after submission
+- **[`references/patterns.md`](references/patterns.md)** — read for: reusing one form for different records (edit dialogs), focusing the first invalid field, more than one submit button, changing a value while the user types, nested objects, array fields, lists inside lists and `formRootRule`, async validation (rules and async schemas), conditional fields, conditional validation, multi-step forms, loading initial values from a server, saving and setting a new baseline, controlling a form from outside its component, custom inputs, form context across components, `transformValues`, standalone `useField`, server errors after submission
 - **[`references/api.md`](references/api.md)** — read for everything else. It is the only place that lists every `useForm` option and return member (`watch`, `onValuesChange`, `enhanceGetInputProps`, `resetField`, `clearFieldError`, `touchTrigger` and others), plus `useField`, `createFormContext`, `createFormActions`, `schemaResolver`, built-in validators and types
 
 ## Looking things up
