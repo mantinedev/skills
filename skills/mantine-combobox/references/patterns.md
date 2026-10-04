@@ -11,6 +11,10 @@
 - [Highlight the current value on open](#highlight-the-current-value-on-open)
 - [Creatable option](#creatable-option)
 - [Async search](#async-search)
+- [Free-text input with suggestions](#free-text-input-with-suggestions)
+- [Button inside an option](#button-inside-an-option)
+- [Suggestions for a textarea](#suggestions-for-a-textarea)
+- [Custom styles](#custom-styles)
 - [Virtualized list](#virtualized-list)
 - [Custom form input](#custom-form-input)
 - [Search inside the dropdown](#search-inside-the-dropdown)
@@ -404,6 +408,192 @@ useEffect(() => {
     </Combobox.Options>
   </Combobox.Dropdown>
 </Combobox>
+```
+
+---
+
+## Free-text input with suggestions
+
+For a search box the user must be able to submit text that matches no option. Do not highlight
+anything automatically; Enter with no highlighted option is not handled by Combobox, so handle it
+in your own `onKeyDown`, which runs before the built-in handling:
+
+```tsx
+<Combobox store={combobox} onOptionSubmit={handleOptionSubmit}>
+  <Combobox.Target>
+    <TextInput
+      value={query}
+      onChange={(event) => {
+        setQuery(event.currentTarget.value);
+        combobox.resetSelectedOption(); // typing removes the highlight
+        combobox.openDropdown();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && combobox.getSelectedOptionIndex() === -1) {
+          onSearch(query);
+          combobox.closeDropdown();
+        }
+      }}
+      onFocus={() => combobox.openDropdown()}
+      onBlur={() => combobox.closeDropdown()}
+    />
+  </Combobox.Target>
+
+  <Combobox.Dropdown hidden={suggestions.length === 0 && query.trim() === ''}>
+    <Combobox.Options>
+      {suggestions}
+      {query.trim() !== '' && <Combobox.Option value="$search">Search for "{query}"</Combobox.Option>}
+    </Combobox.Options>
+    <Combobox.Footer>↑↓ to navigate · ↵ to select · esc to close</Combobox.Footer>
+  </Combobox.Dropdown>
+</Combobox>
+```
+
+Unlike a select, do not restore the previous value on blur and do not call `selectFirstOption()`.
+
+---
+
+## Button inside an option
+
+A button inside `Combobox.Option` (remove a recent item) must not submit the option or take focus:
+
+```tsx
+<Combobox.Option value={item} key={item}>
+  <Group justify="space-between" wrap="nowrap">
+    {item}
+    <CloseButton
+      size="sm"
+      aria-label={`Remove ${item}`}
+      onMouseDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onRemove(item);
+      }}
+    />
+  </Group>
+</Combobox.Option>
+```
+
+---
+
+## Suggestions for a textarea
+
+For @mentions or /commands the target is a `Textarea` and the dropdown opens from the text around
+the caret, not from focus. Turn the built-in keyboard handling off so that arrows and Enter work
+normally while the dropdown is closed:
+
+```tsx
+const combobox = useCombobox();
+// trigger: { start, query } for the "@word" at the caret, or null. Compute it in onChange, onSelect and onClick.
+
+useEffect(() => {
+  if (trigger && matches.length > 0) {
+    combobox.openDropdown();
+    combobox.selectFirstOption(); // after the options render
+  } else {
+    combobox.closeDropdown();
+  }
+}, [trigger?.query, matches.length]);
+
+<Combobox store={combobox} width={260} position="bottom-start" onOptionSubmit={insertMention}>
+  <Combobox.Target withKeyboardNavigation={false}>
+    <Textarea
+      value={value}
+      onChange={handleChange}
+      onBlur={() => combobox.closeDropdown()}
+      onKeyDown={(event) => {
+        if (!combobox.dropdownOpened) {
+          return;
+        }
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          combobox.selectNextOption();
+        } else if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          combobox.selectPreviousOption();
+        } else if (event.key === 'Enter' || event.key === 'Tab') {
+          event.preventDefault();
+          combobox.clickSelectedOption();
+        } else if (event.key === 'Escape') {
+          combobox.closeDropdown();
+        }
+      }}
+    />
+  </Combobox.Target>
+  <Combobox.Dropdown>
+    <Combobox.Options>{options}</Combobox.Options>
+  </Combobox.Dropdown>
+</Combobox>
+```
+
+In `insertMention`, replace the text from `trigger.start` to the caret and restore the caret with
+`setSelectionRange` after the value updates. Clicking an option keeps focus in the textarea.
+
+---
+
+## Custom styles
+
+Style the dropdown with `classNames` and a CSS module. Default option rules have zero specificity,
+so these classes override them without `!important`. See "Default styles" in api.md for what you
+are overriding.
+
+```tsx
+<Combobox
+  store={combobox}
+  size="md"
+  dropdownPadding={8}
+  radius={12}
+  shadow="lg"
+  offset={6}
+  transitionProps={{ transition: 'pop-top-left', duration: 150 }}
+  classNames={{ options: classes.options, option: classes.option }}
+>
+  <Combobox.Target targetType="button">
+    <InputBase component="button" type="button" pointer className={classes.trigger} rightSection={<Combobox.Chevron />}>
+      {label}
+    </InputBase>
+  </Combobox.Target>
+  {/* dropdown */}
+</Combobox>
+```
+
+```css
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.option {
+  border-radius: 8px;
+
+  /* keyboard highlight: replace the default primary background */
+  &[data-combobox-selected] {
+    background-color: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5));
+    color: inherit;
+  }
+
+  /* option that holds the value */
+  &[data-combobox-active] {
+    background-color: var(--mantine-primary-color-light);
+  }
+
+  &[data-combobox-active][data-combobox-selected] {
+    background-color: var(--mantine-primary-color-light-hover);
+  }
+
+  &[data-combobox-disabled] {
+    opacity: 0.5;
+  }
+}
+
+/* open state: the target element gets data-expanded */
+.trigger [data-expanded] {
+  border-color: var(--mantine-primary-color-filled);
+}
 ```
 
 ---

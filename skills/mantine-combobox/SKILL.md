@@ -106,14 +106,23 @@ const handleSubmit = (val: string) => {
 
 ## What Combobox does for you
 
-- The target handles keyboard: ArrowUp/ArrowDown move the highlight and skip disabled options, Enter
-  submits the highlighted option, Escape closes the dropdown. With `targetType="button"`, Space and
-  Enter also open it.
+- The target handles keyboard: ArrowUp/ArrowDown move the highlight and skip disabled options (and
+  open the dropdown when it is closed), Enter submits the highlighted option, Escape closes the
+  dropdown. With `targetType="button"`, Space and Enter also open it. Tab is not handled.
+- Enter does nothing when no option is highlighted, so a free-text input can handle it itself.
+- Nothing is highlighted until the user presses an arrow key, unless you call `selectFirstOption()`
+  or `selectActiveOption()`.
 - Clicking an option does not move focus away from the input, and a disabled option never calls
   `onOptionSubmit`.
 - `Combobox.Option` forwards `data-*` attributes and event handlers to its element.
 - `Combobox.Search` handles the same keys as the target. Your own `onKeyDown` on the target child or
-  on `Combobox.Search` is called as well, so extra keys (PageUp, ArrowRight) can be added there.
+  on `Combobox.Search` is called first, then the built-in handling runs, so extra keys (PageUp,
+  ArrowRight) can be added there. To take the keyboard over completely (a textarea, where arrows
+  must move the caret), set `withKeyboardNavigation={false}` on `Combobox.Target` and call
+  `selectNextOption`, `selectPreviousOption` and `clickSelectedOption` yourself.
+- Defaults: the dropdown is as wide as the target (`width="target"`), rendered in a portal, kept
+  mounted while closed, opens without animation, and hovering an option does not change the
+  keyboard highlight.
 - The dropdown renders in a portal above modals and drawers and is not clipped by them. Inside a
   `Modal`, Escape closes only the dropdown; a second Escape closes the modal. No extra code is needed.
 - An option does not have to select a value: `onOptionSubmit` can toggle, expand a row or run an
@@ -132,8 +141,8 @@ Two words that are easy to mix up:
 
 Read both before building anything beyond the basic select above:
 
-- **[`references/patterns.md`](references/patterns.md)** — complete examples: searchable select (input trigger), virtualized list for thousands of options, custom form input built on Combobox, search inside the dropdown, multi-select with pills, creatable option, async search with loading and error states, groups, custom option rendering, highlighting the current value on open, clear button, form integration, dropdown that fits the viewport
-- **[`references/api.md`](references/api.md)** — `useCombobox` options and every store method with what it does, `useVirtualizedCombobox`, all sub-component props, CSS variables, Styles API selectors
+- **[`references/patterns.md`](references/patterns.md)** — complete examples: searchable select (input trigger), free-text input with suggestions, suggestions for a textarea (mentions), custom styles with a CSS module, virtualized list for thousands of options, custom form input built on Combobox, search inside the dropdown, multi-select with pills, creatable option, async search with loading and error states, groups, custom option rendering, highlighting the current value on open, clear button, form integration, dropdown that fits the viewport
+- **[`references/api.md`](references/api.md)** — `useCombobox` options and every store method with what it does, default styles and how to override them, `useVirtualizedCombobox`, all sub-component props, CSS variables, Styles API selectors
 
 ## Looking things up
 

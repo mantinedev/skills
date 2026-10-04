@@ -5,6 +5,7 @@
 - [Combobox (root)](#combobox-root)
 - [Sub-components](#sub-components)
 - [CSS variables & Styles API](#css-variables--styles-api)
+- [Default styles and overriding them](#default-styles-and-overriding-them)
 
 ---
 
@@ -119,13 +120,15 @@ apply: set the index in your state instead. Full example in patterns.md.
   targetType="input"          // 'button' | 'input', default: 'input'
   withKeyboardNavigation      // boolean, default: true
   withAriaAttributes          // boolean, default: true
-  withExpandedAttribute       // boolean, default: false
+  withExpandedAttribute       // boolean, default: false — adds role="combobox" and aria-expanded
   autoComplete="off"          // string
   refProp="ref"               // prop name used to pass the ref to the child
 >
   {/* single child — the trigger element */}
 </Combobox.Target>
 ```
+
+While the dropdown is open the target element has the `data-expanded` attribute (unless `withAriaAttributes={false}`): use it to style the open state.
 
 Use `targetType="button"` when the trigger is a button: Space and Enter open the dropdown.
 With the default `input` type they do not.
@@ -186,6 +189,8 @@ Built-in search input for the dropdown, wired to keyboard navigation. Render it 
 ```
 
 ### Combobox.Group
+`label` accepts any React node. A group with no options inside is hidden.
+
 ```tsx
 <Combobox.Group label="Frontend">
   <Combobox.Option value="react">React</Combobox.Option>
@@ -251,3 +256,32 @@ Rendered with `tabIndex={-1}` and `aria-hidden`: it is a mouse-only shortcut for
 | `data-combobox-selected` | Option highlighted by keyboard navigation (styled by default) |
 | `data-combobox-active` | Option with `active` prop (no default styles) |
 | `data-combobox-disabled` | Disabled option |
+
+---
+
+## Default styles and overriding them
+
+Pass `classNames` to `Combobox` to style any selector from the table above with a CSS module:
+`<Combobox classNames={{ dropdown: classes.dropdown, option: classes.option }} />`.
+
+Default styles use `:where()` selectors with zero specificity, so a plain class rule always wins.
+
+| Element | Default styles |
+|---|---|
+| `dropdown` | `padding: var(--combobox-padding)` (4px). Border, background, radius and shadow come from Popover: set them with the `radius` and `shadow` props or in CSS |
+| `option` | `padding: var(--combobox-option-padding)`, `font-size: var(--combobox-option-fz)`, `border-radius: var(--mantine-radius-default)`, transparent background, pointer cursor |
+| `option[data-combobox-selected]` | `background-color: var(--mantine-primary-color-filled)`, white text |
+| `option[data-combobox-disabled]` | `opacity: 0.35`, `cursor: not-allowed` |
+| `option:hover` (not selected, not disabled) | light: `var(--mantine-color-gray-0)`, dark: `var(--mantine-color-dark-7)` |
+| `option[data-combobox-active]` | no styles |
+| `header`, `footer` | option padding and font size, negative inline margins that cancel the dropdown padding, 1px border on the side facing the options |
+| `groupLabel` | dimmed, 85% of option font size, a line after the text |
+| `empty` | centered, dimmed, option padding |
+
+`size` (`xs` to `xl`) sets `--combobox-option-fz` to the theme font size and `--combobox-option-padding`
+to `4px 8px`, `6px 10px`, `8px 12px`, `10px 16px`, `14px 20px`. Both variables are inherited, so
+content inside an option can use them.
+
+Popover props used most with a custom look: `width` (`'target'` by default, or a number),
+`position` (`'bottom-start'`), `offset` (gap in px), `radius`, `shadow`,
+`transitionProps={{ transition: 'pop-top-left', duration: 150 }}`, `withArrow`.
