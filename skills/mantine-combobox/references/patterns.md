@@ -11,6 +11,8 @@
 - [Highlight the current value on open](#highlight-the-current-value-on-open)
 - [Creatable option](#creatable-option)
 - [Async search](#async-search)
+- [Virtualized list](#virtualized-list)
+- [Custom form input](#custom-form-input)
 - [Search inside the dropdown](#search-inside-the-dropdown)
 - [Dropdown that fits the viewport](#dropdown-that-fits-the-viewport)
 - [Nothing found message](#nothing-found-message)
@@ -78,6 +80,7 @@ function SearchableSelect({ data }: { data: string[] }) {
     onDropdownOpen: () => combobox.selectFirstOption(),
   });
 
+  // When the input holds the label of the selected value, show the full list instead of filtering by it
   const shouldFilterOptions = data.every((item) => item !== search);
   const filtered = shouldFilterOptions
     ? data.filter((item) => item.toLowerCase().includes(search.toLowerCase().trim()))
@@ -402,6 +405,173 @@ useEffect(() => {
   </Combobox.Dropdown>
 </Combobox>
 ```
+
+---
+
+## Virtualized list
+
+For thousands of options render only the visible rows. Example with `@tanstack/react-virtual`:
+
+```tsx
+const ITEM_HEIGHT = 36;
+
+function Demo({ data }: { data: { value: string; label: string }[] }) {
+  const [selectedOptionIndex, setSelectedOptionIndex] = useState(-1); // keyboard highlight
+  const [activeOptionIndex, setActiveOptionIndex] = useState(-1); // option that holds the value
+  const [value, setValue] = useState('');
+  const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null);
+
+  const virtualizer = useVirtualizer({
+    count: data.length,
+    getScrollElement: () => scrollParent,
+    estimateSize: () => ITEM_HEIGHT,
+    overscan: 5,
+  });
+
+  const combobox = useVirtualizedCombobox({
+    onDropdownOpen: () => {
+      if (activeOptionIndex !== -1) {
+        setSelectedOptionIndex(activeOptionIndex);
+        requestAnimationFrame(() => virtualizer.scrollToIndex(activeOptionIndex, { align: 'auto' }));
+      }
+    },
+    totalOptionsCount: data.length,
+    getOptionId: (index) => `option-${data[index].value}`,
+    selectedOptionIndex,
+    activeOptionIndex,
+    setSelectedOptionIndex: (index) => {
+      setSelectedOptionIndex(index);
+      if (index !== -1) {
+        virtualizer.scrollToIndex(index, { align: 'auto' });
+      }
+    },
+    onSelectedOptionSubmit: handleSubmit,
+  });
+
+  function handleSubmit(index: number) {
+    setValue(data[index].value);
+    setActiveOptionIndex(index);
+    combobox.closeDropdown();
+    combobox.resetSelectedOption();
+  }
+
+  return (
+    <Combobox store={combobox} resetSelectionOnOptionHover={false} keepMounted>
+      <Combobox.Target targetType="button">
+        <InputBase component="button" type="button" pointer onClick={() => combobox.toggleDropdown()}>
+          {value || <Input.Placeholder>Pick a value</Input.Placeholder>}
+        </InputBase>
+      </Combobox.Target>
+      <Combobox.Dropdown>
+        <Combobox.Options>
+          <ScrollArea.Autosize
+            mah={220}
+            type="scroll"
+            viewportRef={setScrollParent}
+            onMouseDown={(event) => event.preventDefault()}
+          >
+            <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+              {virtualizer.getVirtualItems().map((row) => (
+                <Combobox.Option
+                  value={data[row.index].value}
+                  key={data[row.index].value}
+                  id={`option-${data[row.index].value}`}
+                  active={row.index === activeOptionIndex}
+                  selected={row.index === selectedOptionIndex}
+                  onClick={() => handleSubmit(row.index)}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: row.size,
+                    transform: `translateY(${row.start}px)`,
+                  }}
+                >
+                  {data[row.index].label}
+                </Combobox.Option>
+              ))}
+            </div>
+          </ScrollArea.Autosize>
+        </Combobox.Options>
+      </Combobox.Dropdown>
+    </Combobox>
+  );
+}
+```
+
+- `keepMounted` keeps the scroll element in the DOM so that `scrollToIndex` works when the dropdown opens.
+- With search, filter the data first and pass the filtered length as `totalOptionsCount`. After the
+  query changes, set `selectedOptionIndex` to `0` and call `virtualizer.scrollToIndex(0)`.
+- When the value can be set from outside, derive `activeOptionIndex` from the value
+  (`data.findIndex(...)`) instead of storing it, so that opening scrolls to the right row.
+
+---
+
+## Custom form input
+
+A select built on `Combobox` that works with `form.getInputProps` from `@mantine/form` accepts
+`value`, `defaultValue`, `onChange`, `error`, `onFocus` and `onBlur`. Use `useUncontrolled` for the
+value, and report blur only when focus leaves both the trigger and the dropdown search:
+
+```tsx
+function CountrySelect({ value, defaultValue, onChange, onFocus, onBlur, error, label, readOnly, ...others }: CountrySelectProps) {
+  const [current, setCurrent] = useUncontrolled<string | null>({ value, defaultValue, finalValue: null, onChange });
+  const combobox = useCombobox({
+    onDropdownOpen: () => combobox.focusSearchInput(),
+    onDropdownClose: () => combobox.resetSelectedOption(),
+  });
+
+  const isInside = (node: EventTarget | null) =>
+    node !== null && (node === combobox.targetRef.current || node === combobox.searchRef.current);
+
+  const handleBlur = (event: React.FocusEvent<HTMLElement>) => {
+    if (!isInside(event.relatedTarget)) {
+      onBlur?.(event);
+    }
+  };
+
+  return (
+    <Combobox
+      store={combobox}
+      onOptionSubmit={(val) => {
+        setCurrent(val);
+        combobox.closeDropdown();
+        combobox.focusTarget();
+      }}
+    >
+      <Combobox.Target targetType="button">
+        <InputBase
+          component="button"
+          type="button"
+          pointer
+          label={label}
+          error={error}
+          rightSection={<Combobox.Chevron />}
+          onClick={() => !readOnly && combobox.toggleDropdown()}
+          onFocus={onFocus}
+          onBlur={handleBlur}
+          {...others}
+        >
+          {current || <Input.Placeholder>Pick country</Input.Placeholder>}
+        </InputBase>
+      </Combobox.Target>
+      <Combobox.Dropdown>
+        <Combobox.Search value={search} onChange={handleSearchChange} onBlur={handleBlur} />
+        <Combobox.Options>{options}</Combobox.Options>
+      </Combobox.Dropdown>
+    </Combobox>
+  );
+}
+
+<CountrySelect label="Country" key={form.key('country')} {...form.getInputProps('country')} />
+```
+
+Spread the remaining props onto the trigger: `getInputProps` also passes `data-path`, which
+`form.getInputNode` uses to find and focus the field.
+
+`Combobox.Target` can also wrap a small button inside the `leftSection` of a `TextInput` (a country
+code picker in a phone input): the dropdown is positioned relative to that button.
 
 ---
 

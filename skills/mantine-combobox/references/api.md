@@ -69,10 +69,25 @@ not the option that holds the current value.
 
 ### useVirtualizedCombobox
 
-Store for virtualized option lists (`@tanstack/react-virtual`, `react-virtuoso`). Option indexing
-does not rely on the DOM: keep the selected option index in React state and pass it to the hook
-together with `totalOptionsCount`, `getOptionId`, `selectedOptionIndex`, `setSelectedOptionIndex`
-and `onSelectedOptionSubmit`. See the virtualized examples in the Combobox documentation.
+Store for lists where only some options are in the DOM. It takes the same open/close options as
+`useCombobox` plus:
+
+```ts
+useVirtualizedCombobox({
+  totalOptionsCount: number;                    // number of options after filtering
+  getOptionId: (index: number) => string | null; // id of the option element, for aria-activedescendant
+  selectedOptionIndex: number;                  // highlighted index, kept in your state
+  setSelectedOptionIndex: (index: number) => void; // called by keyboard navigation
+  onSelectedOptionSubmit: (index: number) => void; // Enter on the highlighted option
+  activeOptionIndex?: number;                   // index of the option that holds the value
+  isOptionDisabled?: (index: number) => boolean;
+})
+```
+
+The store only moves the index. You render the highlight (`selected` prop on `Combobox.Option`),
+scroll the list (in `setSelectedOptionIndex`) and handle clicks (`onClick` on the option).
+DOM-based helpers (`selectActiveOption`, `selectFirstOption`, `updateSelectedOptionIndex`) do not
+apply: set the index in your state instead. Full example in patterns.md.
 
 ---
 
@@ -87,7 +102,8 @@ and `onSelectedOptionSubmit`. See the virtualized examples in the Combobox docum
   resetSelectionOnOptionHover   // boolean — hovering an option removes the keyboard highlight
   disabled                      // boolean — Popover prop, the dropdown cannot be opened
   readOnly                      // boolean — blocks keyboard interactions on the target only;
-                                // option clicks still call onOptionSubmit
+                                // option clicks still call onOptionSubmit, and your own
+                                // toggleDropdown() in onClick still opens: guard it yourself
   floatingHeight="viewport"     // dropdown fills the available viewport height, disables flip
   // + all Popover props (position, offset, width, withinPortal, etc.)
 />
@@ -192,7 +208,7 @@ Built-in search input for the dropdown, wired to keyboard navigation. Render it 
 <Combobox.ClearButton onClear={() => setValue(null)} />
 ```
 
-Rendered with `tabIndex={-1}` and `aria-hidden`: it is a mouse-only shortcut. Keyboard users clear the value by deleting the text.
+Rendered with `tabIndex={-1}` and `aria-hidden`: it is a mouse-only shortcut for input triggers, where keyboard users clear the value by deleting the text. For a button trigger use `<CloseButton aria-label="Clear" />` in the `rightSection` instead, so that it is reachable by keyboard.
 
 ### Combobox.HiddenInput
 ```tsx

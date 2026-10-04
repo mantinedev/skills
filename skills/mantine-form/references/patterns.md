@@ -507,6 +507,17 @@ function StepperInput({ label, error, value, defaultValue, onChange, onFocus, on
 <StepperInput label="Guests" key={form.key('guests')} {...form.getInputProps('guests')} />
 ```
 
+- `getInputProps` also returns `data-path`. Spread the remaining props onto the focusable element
+  of the input if `form.getInputNode(path)?.focus()` should work for it.
+- `onBlur` on a wrapper fires whenever focus moves between elements inside it. For an input made of
+  several focusable parts (a trigger and a dropdown search), call `onBlur` only when
+  `event.relatedTarget` is outside the component.
+- A field can hold an object (`{ country, number }`). A rule on that field receives the object and
+  its error is stored at the field path (`form.errors.phone`). Update it as a whole with
+  `onChange({ ...value, number })`.
+- `required` on a Mantine input adds the native attribute, which makes the browser block submit
+  before `form.onSubmit` runs. Use `withAsterisk` for the visual mark and validate in the form.
+
 ---
 
 ## Form context across components

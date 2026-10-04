@@ -25,7 +25,8 @@ Build with `Combobox` primitives only when none of these fit:
 |---|---|
 | Standard select, multi-select, autocomplete or tags input | `Select`, `MultiSelect`, `Autocomplete`, `TagsInput` (all support `renderOption`) |
 | Options dropdown attached to a button or any other element, no input | `ComboboxPopover` (data-driven: `data`, `value`, `onChange`, `searchable`, `multiple`) |
-| Hierarchical options | `TreeSelect` |
+| Hierarchical options | `TreeSelect` (see below) |
+| More than a few hundred options | `Combobox` with `useVirtualizedCombobox`, see the virtualized pattern |
 
 ```tsx
 <ComboboxPopover data={['React', 'Angular', 'Vue']} value={value} onChange={setValue}>
@@ -39,9 +40,16 @@ Build with `Combobox` primitives only when none of these fit:
 handles keyboard navigation. Useful props: `searchable`, `multiple` (value becomes `string[]`, the
 dropdown stays open while picking), `allowDeselect={false}` (one option is always selected),
 `nothingFoundMessage`, `renderOption`, `limit`, `maxDropdownHeight`, `name` (hidden input for forms),
-`comboboxProps={{ width: 220, position: 'bottom-start' }}`. `data` supports groups and `disabled` items
-like `Select`. It cannot render custom dropdown content (tabs, header, footer, create actions): use
+`comboboxProps={{ width: 220, position: 'bottom-start' }}`. `data` supports `disabled` items and groups
+like `Select`: `[{ group: 'Size', items: [{ value: 'xs', label: 'XS' }] }]`. It cannot render custom dropdown content (tabs, header, footer, create actions): use
 `Combobox` primitives for that.
+
+`TreeSelect` takes nested `data` (`{ value, label, children? }[]`, unique values) and renders an
+input with an expandable tree in the dropdown. Props include `mode` (single, multiple, or checkbox
+with parent-child cascade), `searchable`, `clearable`, `renderNode`. Build the tree from `Combobox`
+primitives instead when you need a different layout: only leaves selectable, a flat list of search
+results with full paths, or a button trigger. In that case render every visible row as a
+`Combobox.Option` and decide in `onOptionSubmit` whether the row selects or expands.
 
 ## Core Workflow
 
@@ -104,6 +112,12 @@ const handleSubmit = (val: string) => {
 - Clicking an option does not move focus away from the input, and a disabled option never calls
   `onOptionSubmit`.
 - `Combobox.Option` forwards `data-*` attributes and event handlers to its element.
+- `Combobox.Search` handles the same keys as the target. Your own `onKeyDown` on the target child or
+  on `Combobox.Search` is called as well, so extra keys (PageUp, ArrowRight) can be added there.
+- The dropdown renders in a portal above modals and drawers and is not clipped by them. Inside a
+  `Modal`, Escape closes only the dropdown; a second Escape closes the modal. No extra code is needed.
+- An option does not have to select a value: `onOptionSubmit` can toggle, expand a row or run an
+  action, and decides itself whether to close the dropdown.
 - Other interactive content in the dropdown (buttons in `Combobox.Header`, a Retry link) is not
   handled: add `onMouseDown={(event) => event.preventDefault()}` to it so the input keeps focus and
   an `onBlur` handler does not close the dropdown.
@@ -118,7 +132,7 @@ Two words that are easy to mix up:
 
 Read both before building anything beyond the basic select above:
 
-- **[`references/patterns.md`](references/patterns.md)** — complete examples: searchable select (input trigger), search inside the dropdown, multi-select with pills, creatable option, async search with loading and error states, groups, custom option rendering, highlighting the current value on open, clear button, form integration, dropdown that fits the viewport
+- **[`references/patterns.md`](references/patterns.md)** — complete examples: searchable select (input trigger), virtualized list for thousands of options, custom form input built on Combobox, search inside the dropdown, multi-select with pills, creatable option, async search with loading and error states, groups, custom option rendering, highlighting the current value on open, clear button, form integration, dropdown that fits the viewport
 - **[`references/api.md`](references/api.md)** — `useCombobox` options and every store method with what it does, `useVirtualizedCombobox`, all sub-component props, CSS variables, Styles API selectors
 
 ## Looking things up
