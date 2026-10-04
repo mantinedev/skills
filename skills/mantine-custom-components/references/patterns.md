@@ -41,7 +41,7 @@ export const Minimal = factory<MinimalFactory>((_props) => {
   );
 });
 
-Minimal.displayName = '@mantine/core/Minimal';
+Minimal.displayName = 'Minimal';
 ```
 
 ---
@@ -140,7 +140,7 @@ export const MyComponent = factory<MyComponentFactory>((_props) => {
   );
 });
 
-MyComponent.displayName = '@mantine/core/MyComponent';
+MyComponent.displayName = 'MyComponent';
 MyComponent.classes = classes;
 MyComponent.varsResolver = varsResolver;
 ```
@@ -209,7 +209,7 @@ export const MyCardSection = factory<MyCardSectionFactory>((_props) => {
   );
 });
 
-MyCardSection.displayName = '@mantine/core/MyCardSection';
+MyCardSection.displayName = 'MyCardSection';
 ```
 
 **MyCard.tsx** (root component):
@@ -243,7 +243,7 @@ export const MyCard = factory<MyCardFactory>((_props) => {
   );
 });
 
-MyCard.displayName = '@mantine/core/MyCard';
+MyCard.displayName = 'MyCard';
 MyCard.classes = classes;
 MyCard.Section = MyCardSection;   // attach sub-component
 ```
@@ -259,6 +259,7 @@ import {
   Box, BoxProps, polymorphicFactory, PolymorphicFactory,
   StylesApiProps, useProps, useStyles,
 } from '@mantine/core';
+import classes from './MyLink.module.css';
 
 export type MyLinkStylesNames = 'root';
 
@@ -297,7 +298,7 @@ export const MyLink = polymorphicFactory<MyLinkFactory>((_props) => {
   );
 });
 
-MyLink.displayName = '@mantine/core/MyLink';
+MyLink.displayName = 'MyLink';
 MyLink.classes = classes;
 ```
 
@@ -315,7 +316,7 @@ MyLink.classes = classes;
 For components where prop types depend on a generic parameter.
 
 ```tsx
-import { factory, Factory, genericFactory, useProps } from '@mantine/core';
+import { BoxProps, Factory, genericFactory, StylesApiProps, useProps } from '@mantine/core';
 
 type SelectValue<M extends boolean> = M extends true ? string[] : string | null;
 
@@ -342,7 +343,7 @@ export const MySelect = genericFactory<MySelectFactory>((_props) => {
   // ...
 });
 
-MySelect.displayName = '@mantine/core/MySelect';
+MySelect.displayName = 'MySelect';
 ```
 
 **Usage:**
@@ -375,13 +376,9 @@ const theme = createTheme({
         root: 'my-root-class',
         inner: 'my-inner-class',
       },
-      // Add inline styles to selectors
-      styles: {
-        root: { border: '1px solid red' },
-      },
-      // Or use a callback for theme-aware styles
+      // Add inline styles to selectors: an object, or a callback for theme-aware styles
       styles: (theme) => ({
-        root: { background: theme.colors.blue[0] },
+        root: { border: `1px solid ${theme.colors.blue[6]}` },
       }),
       // Override CSS variables
       vars: (_theme, props) => ({

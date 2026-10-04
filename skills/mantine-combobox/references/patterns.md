@@ -8,6 +8,8 @@
 - [Custom option rendering](#custom-option-rendering)
 - [Clear button](#clear-button)
 - [Form integration (hidden input)](#form-integration-hidden-input)
+- [Search inside the dropdown](#search-inside-the-dropdown)
+- [Dropdown that fits the viewport](#dropdown-that-fits-the-viewport)
 - [Nothing found message](#nothing-found-message)
 
 ---
@@ -262,6 +264,82 @@ const rightSection = value ? (
 
 // Multiple values (joined by comma by default)
 <Combobox.HiddenInput value={selectedValues} name="frameworks" valuesDivider="," />
+```
+
+---
+
+## Search inside the dropdown
+
+Button trigger with `Combobox.Search` in the dropdown. Focus the search input when the dropdown
+opens and return focus to the target when it closes.
+
+```tsx
+const [search, setSearch] = useState('');
+const [value, setValue] = useState<string | null>(null);
+
+const combobox = useCombobox({
+  onDropdownClose: () => {
+    combobox.resetSelectedOption();
+    combobox.focusTarget();
+    setSearch('');
+  },
+  onDropdownOpen: () => combobox.focusSearchInput(),
+});
+
+const options = data
+  .filter((item) => item.toLowerCase().includes(search.toLowerCase().trim()))
+  .map((item) => (
+    <Combobox.Option value={item} key={item}>
+      {item}
+    </Combobox.Option>
+  ));
+
+<Combobox
+  store={combobox}
+  width={250}
+  position="bottom-start"
+  onOptionSubmit={(val) => {
+    setValue(val);
+    combobox.closeDropdown();
+  }}
+>
+  <Combobox.Target withAriaAttributes={false}>
+    <Button onClick={() => combobox.toggleDropdown()}>{value || 'Pick item'}</Button>
+  </Combobox.Target>
+
+  <Combobox.Dropdown>
+    <Combobox.Search
+      value={search}
+      onChange={(event) => setSearch(event.currentTarget.value)}
+      placeholder="Search"
+    />
+    <Combobox.Options>
+      {options.length > 0 ? options : <Combobox.Empty>Nothing found</Combobox.Empty>}
+    </Combobox.Options>
+  </Combobox.Dropdown>
+</Combobox>
+```
+
+If no custom option markup is needed, `<ComboboxPopover searchable data={data} />` does the same
+without any of this code.
+
+---
+
+## Dropdown that fits the viewport
+
+For long lists, let the dropdown take the available viewport height and scroll inside it:
+
+```tsx
+<Combobox store={combobox} floatingHeight="viewport" onOptionSubmit={handleSubmit}>
+  <Combobox.Target>{/* ... */}</Combobox.Target>
+  <Combobox.Dropdown>
+    <Combobox.Options>
+      <ScrollArea.Autosize mah="var(--combobox-floating-options-max-height)" type="scroll">
+        {options}
+      </ScrollArea.Autosize>
+    </Combobox.Options>
+  </Combobox.Dropdown>
+</Combobox>
 ```
 
 ---

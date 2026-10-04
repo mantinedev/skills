@@ -5,6 +5,7 @@
 - [Nested object fields](#nested-object-fields)
 - [Array / list fields](#array--list-fields)
 - [Async validation](#async-validation)
+- [Conditional fields](#conditional-fields)
 - [Form context across components](#form-context-across-components)
 - [transformValues](#transformvalues)
 - [Uncontrolled mode](#uncontrolled-mode)
@@ -20,6 +21,7 @@ import { useForm, isEmail, isNotEmpty, hasLength } from '@mantine/form';
 
 function BasicForm() {
   const form = useForm({
+    mode: 'uncontrolled',
     initialValues: { name: '', email: '', password: '' },
     validate: {
       name: isNotEmpty('Name is required'),
@@ -30,9 +32,9 @@ function BasicForm() {
 
   return (
     <form onSubmit={form.onSubmit((values) => console.log(values))}>
-      <TextInput label="Name" {...form.getInputProps('name')} />
-      <TextInput label="Email" {...form.getInputProps('email')} />
-      <PasswordInput label="Password" {...form.getInputProps('password')} />
+      <TextInput label="Name" key={form.key('name')} {...form.getInputProps('name')} />
+      <TextInput label="Email" key={form.key('email')} {...form.getInputProps('email')} />
+      <PasswordInput label="Password" key={form.key('password')} {...form.getInputProps('password')} />
       <Button type="submit">Submit</Button>
     </form>
   );
@@ -47,6 +49,7 @@ Use dot notation to address nested fields.
 
 ```tsx
 const form = useForm({
+  mode: 'uncontrolled',
   initialValues: {
     user: {
       name: '',
@@ -68,27 +71,30 @@ const form = useForm({
 });
 
 // Access nested fields with dot notation
-<TextInput {...form.getInputProps('user.name')} />
-<TextInput {...form.getInputProps('user.address.city')} />
-<TextInput {...form.getInputProps('user.address.zip')} />
+<TextInput key={form.key('user.name')} {...form.getInputProps('user.name')} />
+<TextInput key={form.key('user.address.city')} {...form.getInputProps('user.address.city')} />
+<TextInput key={form.key('user.address.zip')} {...form.getInputProps('user.address.zip')} />
 ```
 
 ---
 
 ## Array / list fields
 
+Give every item a stable `key` value (`randomId` from `@mantine/hooks`) and use it as the React key
+of the row. Use `formRootRule` to validate the list itself next to its items.
+
 ```tsx
-interface Employee {
-  name: string;
-  role: string;
-}
+import { formRootRule, isNotEmpty, useForm } from '@mantine/form';
+import { randomId } from '@mantine/hooks';
 
 const form = useForm({
+  mode: 'uncontrolled',
   initialValues: {
-    employees: [{ name: '', role: '' }] as Employee[],
+    employees: [{ name: '', role: '', key: randomId() }],
   },
   validate: {
     employees: {
+      [formRootRule]: isNotEmpty('At least one employee is required'),
       name: isNotEmpty('Name required'),
       role: isNotEmpty('Role required'),
     },
@@ -96,17 +102,19 @@ const form = useForm({
 });
 
 // Render the list
-const fields = form.values.employees.map((_, index) => (
-  <Group key={form.key(`employees.${index}`)}>
+const fields = form.getValues().employees.map((item, index) => (
+  <Group key={item.key}>
     <TextInput
-      {...form.getInputProps(`employees.${index}.name`)}
       placeholder="Name"
+      key={form.key(`employees.${index}.name`)}
+      {...form.getInputProps(`employees.${index}.name`)}
     />
     <TextInput
-      {...form.getInputProps(`employees.${index}.role`)}
       placeholder="Role"
+      key={form.key(`employees.${index}.role`)}
+      {...form.getInputProps(`employees.${index}.role`)}
     />
-    <ActionIcon onClick={() => form.removeListItem('employees', index)}>
+    <ActionIcon aria-label="Remove employee" onClick={() => form.removeListItem('employees', index)}>
       <IconTrash />
     </ActionIcon>
   </Group>
@@ -115,7 +123,10 @@ const fields = form.values.employees.map((_, index) => (
 return (
   <form onSubmit={form.onSubmit((values) => console.log(values))}>
     {fields}
-    <Button onClick={() => form.insertListItem('employees', { name: '', role: '' })}>
+    {form.errors.employees && <Text c="red" size="sm">{form.errors.employees}</Text>}
+    <Button
+      onClick={() => form.insertListItem('employees', { name: '', role: '', key: randomId() })}
+    >
       Add employee
     </Button>
     <Button type="submit">Submit</Button>
@@ -140,6 +151,7 @@ Return a `Promise` from any validator. Use the provided `AbortSignal` to avoid s
 
 ```tsx
 const form = useForm({
+  mode: 'uncontrolled',
   initialValues: { username: '' },
   validate: {
     username: async (value, _values, _path, signal) => {
@@ -151,11 +163,41 @@ const form = useForm({
     },
   },
   validateInputOnChange: ['username'],
-  validateDebounce: 500,   // debounce async calls
+  validateDebounce: 500,   // debounce on-change validation
 });
 ```
 
-Check `form.isValidating()` to show a loading indicator while async validation runs.
+`form.validating` is `true` while any async validation runs, `form.isValidating('username')` checks one field.
+With async rules, `form.validate()` and `form.isValid()` return a `Promise`.
+
+---
+
+## Conditional fields
+
+Use `form.useWatchValue` to read a value during render. `form.getValues()` does not rerender the
+component in uncontrolled mode.
+
+```tsx
+const form = useForm({
+  mode: 'uncontrolled',
+  initialValues: { hasCompany: false, companyName: '' },
+});
+
+const hasCompany = form.useWatchValue('hasCompany');
+
+<Checkbox
+  label="I represent a company"
+  key={form.key('hasCompany')}
+  {...form.getInputProps('hasCompany', { type: 'checkbox' })}
+/>
+{hasCompany && (
+  <TextInput
+    label="Company name"
+    key={form.key('companyName')}
+    {...form.getInputProps('companyName')}
+  />
+)}
+```
 
 ---
 
@@ -177,6 +219,7 @@ const [FormProvider, useFormContext, useProfileForm] = createFormContext<Profile
 // 2. Wrap your form tree with FormProvider
 function ProfileForm() {
   const form = useProfileForm({
+    mode: 'uncontrolled',
     initialValues: { bio: '', website: '' },
     validate: {
       bio: isNotEmpty('Bio is required'),
@@ -197,12 +240,12 @@ function ProfileForm() {
 // 3. Access form in any child — no prop drilling
 function BioField() {
   const form = useFormContext();
-  return <Textarea label="Bio" {...form.getInputProps('bio')} />;
+  return <Textarea label="Bio" key={form.key('bio')} {...form.getInputProps('bio')} />;
 }
 
 function WebsiteField() {
   const form = useFormContext();
-  return <TextInput label="Website" {...form.getInputProps('website')} />;
+  return <TextInput label="Website" key={form.key('website')} {...form.getInputProps('website')} />;
 }
 ```
 
@@ -214,6 +257,7 @@ Shape the values before they reach `onSubmit`. The transform is applied transpar
 
 ```tsx
 const form = useForm({
+  mode: 'uncontrolled',
   initialValues: {
     price: '',        // stored as string in input
     tags: 'a, b, c', // stored as comma-separated string
@@ -232,27 +276,26 @@ form.onSubmit((values) => console.log(values));
 
 ## Uncontrolled mode
 
-Use when performance matters (large forms, frequent updates). The form does not cause React re-renders on input changes.
+The recommended mode for all forms. Values are stored in a ref, so typing does not rerender the form.
 
 ```tsx
 const form = useForm({
   mode: 'uncontrolled',
   initialValues: { name: '', email: '' },
-  validate: { email: isEmail() },
+  validate: { email: isEmail('Invalid email') },
 });
 
-// Same API — getInputProps works identically
-<TextInput {...form.getInputProps('name')} label="Name" />
-<TextInput {...form.getInputProps('email')} label="Email" />
+// Every input needs key={form.key(path)}: inputs receive defaultValue, and the key is what
+// updates them after form.setFieldValue, form.setValues and form.reset
+<TextInput label="Name" key={form.key('name')} {...form.getInputProps('name')} />
+<TextInput label="Email" key={form.key('email')} {...form.getInputProps('email')} />
 
-// To read current values imperatively:
+// Read current values in event handlers:
 const current = form.getValues();
-
-// To force a controlled re-render of a specific input (e.g. after reset):
-<TextInput key={form.key('name')} {...form.getInputProps('name')} />
 ```
 
-`form.values` and `form.errors` are not reactive in uncontrolled mode — use `form.getValues()` and `form.errors` only inside event handlers, or subscribe via `watch`.
+- `form.values` is not updated in uncontrolled mode. Use `form.getValues()` in handlers and `form.useWatchValue(path)` during render.
+- `form.errors`, `form.submitting` and `form.validating` are React state in both modes and can be used during render.
 
 ---
 
@@ -271,11 +314,7 @@ function EmailField() {
   });
 
   return (
-    <TextInput
-      label="Email"
-      {...field.getInputProps()}
-      onBlur={() => field.validate()}
-    />
+    <TextInput label="Email" {...field.getInputProps()} />
   );
 }
 ```
@@ -287,14 +326,14 @@ function EmailField() {
 Set server-side errors on fields after a failed API call.
 
 ```tsx
-const form = useForm({ initialValues: { email: '', password: '' } });
+const form = useForm({ mode: 'uncontrolled', initialValues: { email: '', password: '' } });
 
 const handleSubmit = async (values: typeof form.values) => {
   try {
     await login(values);
   } catch (error) {
-    if (error.fields) {
-      // Map server field errors onto form
+    if (error instanceof ApiValidationError) {
+      // Map server field errors onto form: { email: 'Already registered' }
       form.setErrors(error.fields);
     } else {
       form.setFieldError('password', 'Invalid email or password');
@@ -303,8 +342,8 @@ const handleSubmit = async (values: typeof form.values) => {
 };
 
 <form onSubmit={form.onSubmit(handleSubmit)}>
-  <TextInput {...form.getInputProps('email')} label="Email" />
-  <PasswordInput {...form.getInputProps('password')} label="Password" />
+  <TextInput label="Email" key={form.key('email')} {...form.getInputProps('email')} />
+  <PasswordInput label="Password" key={form.key('password')} {...form.getInputProps('password')} />
   <Button type="submit" loading={form.submitting}>Sign in</Button>
 </form>
 ```

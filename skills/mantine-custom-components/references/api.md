@@ -158,14 +158,17 @@ Merges default props from three sources in priority order (highest → lowest):
 3. Component-level `defaultProps`
 
 ```ts
-useProps<T extends Record<string, any>>(
-  componentName: string,    // must match the name used in theme.components
-  defaultProps: Partial<T>, // use 'satisfies Partial<T>' for correct inference
+useProps<T extends Record<string, any>, U extends Partial<T> | null>(
+  component: string | (string | undefined)[], // must match the name used in theme.components
+  defaultProps: U,                             // object or null
   props: T
-): T
+): T // keys present in defaultProps become non-optional in the result
 ```
 
-**Important:** Always call `useProps` before destructuring. Always use `satisfies Partial<Props>` (not `: Partial<Props>`) for `defaultProps` to preserve narrowed types.
+**Important:** Always call `useProps` before destructuring. Always use `satisfies Partial<Props>` (not `: Partial<Props>`) for `defaultProps` to preserve narrowed types. Pass `null` when the component has no default props.
+
+An array of names shares theme default props between components. Later names win:
+`useProps(['Input', 'MyInput'], defaultProps, _props)` applies `theme.components.Input.defaultProps` first, then `MyInput`.
 
 ```ts
 const defaultProps = { size: 'md', variant: 'filled' } satisfies Partial<MyProps>;
@@ -182,7 +185,7 @@ Returns a `getStyles` function that provides `className` and `style` for each St
 
 ```ts
 useStyles<Payload extends FactoryPayload>(input: {
-  name: string | string[];       // component name(s) for static CSS class generation
+  name: string | (string | undefined)[]; // component name(s): theme lookup and static classes
   classes: Record<string, string>; // CSS module classes object
   props: Payload['props'];
   stylesCtx?: Payload['ctx'];    // optional context for styles/vars resolvers
@@ -195,6 +198,7 @@ useStyles<Payload extends FactoryPayload>(input: {
   vars?: PartialVarsResolver<Payload>;
   varsResolver?: VarsResolver<Payload>;
   attributes?: Attributes<Payload>;
+  stable?: boolean;              // return a referentially stable getStyles, for context values and memoized children
 }): GetStylesApi<Payload>
 ```
 
@@ -203,8 +207,12 @@ useStyles<Payload extends FactoryPayload>(input: {
 getStyles(
   selector: StylesNames,
   options?: {
-    className?: string;   // additional className merged in
-    style?: CSSProperties; // additional style merged in
+    className?: string;      // additional className merged in
+    style?: MantineStyleProp; // additional style merged in
+    classNames?: ClassNames;  // Styles API overrides of a parent, used in compound components
+    styles?: Styles;
+    props?: Record<string, any>; // props passed to classNames/styles functions
+    variant?: string;         // applies the `{selector}--{variant}` class from the CSS module, if defined
     focusable?: boolean;
     active?: boolean;
     withStaticClass?: boolean;
@@ -308,6 +316,7 @@ interface BoxProps extends MantineStyleProps {
 | `bdrs` | border-radius | `opacity` | opacity |
 | `pos` | position | `top` `left` `bottom` `right` `inset` | positioning |
 | `display` | display | `flex` | flex |
+| `mis` `mie` `pis` `pie` | margin/padding inline start/end | `bgsz` `bgp` `bgr` `bga` | background size/position/repeat/attachment |
 
 **`ElementProps`** — gets HTML element props, remapping `style` to Mantine's type:
 ```ts
@@ -377,16 +386,19 @@ Use these in `createVarsResolver` to convert Mantine size tokens to CSS values:
 
 | Function | Input | Output example |
 |---|---|---|
-| `getSize(size, prefix)` | `'sm'`, `'button-height'` | `'var(--mantine-button-height-sm)'` |
-| `getSpacing(size)` | `'md'` or `16` | `'var(--mantine-spacing-md)'` or `'1rem'` |
-| `getRadius(size)` | `'sm'` or `4` | `'var(--mantine-radius-sm)'` or `'0.25rem'` |
+| `getSize(size, prefix)` | `'sm'`, `'button-height'` | `'var(--button-height-sm)'` (define `--button-height-sm` etc. in your CSS) |
+| `getSpacing(size)` | `'md'` or `16` | `'var(--mantine-spacing-md)'` or `'calc(1rem * var(--mantine-scale))'` |
+| `getRadius(size)` | `'sm'` or `4` | `'var(--mantine-radius-sm)'` or `'calc(0.25rem * var(--mantine-scale))'` |
 | `getFontSize(size)` | `'sm'` | `'var(--mantine-font-size-sm)'` |
 | `getLineHeight(size)` | `'sm'` | `'var(--mantine-line-height-sm)'` |
 | `getShadow(size)` | `'md'` | `'var(--mantine-shadow-md)'` |
-| `rem(value)` | `16` | `'1rem'` |
+| `rem(value)` | `16` | `'calc(1rem * var(--mantine-scale))'` |
 | `em(value)` | `16` | `'1em'` |
+| `getThemeColor(color, theme)` | `'blue'`, `'blue.7'`, `'#fff'` | CSS color value for a theme color, shade or any CSS color |
 
 Return `undefined` from a var resolver entry to leave that CSS variable unset (CSS fallback applies).
+`getSize(undefined)` returns `undefined`, but `getRadius(undefined)` returns `'var(--mantine-radius-default)'`:
+use `radius === undefined ? undefined : getRadius(radius)` when the CSS has its own fallback.
 
 ---
 
@@ -395,7 +407,7 @@ Return `undefined` from a var resolver entry to leave that CSS variable unset (C
 These must be set on every component after creation:
 
 ```ts
-MyComponent.displayName = '@mantine/core/MyComponent'; // or '@mantine/package/Name'
+MyComponent.displayName = 'MyComponent';
 MyComponent.classes = classes;                          // CSS module classes object
 MyComponent.varsResolver = varsResolver;               // only if component defines vars
 

@@ -6,6 +6,7 @@
 - [useField](#usefield-hook)
 - [createFormContext](#createformcontext)
 - [createFormActions](#createformactions)
+- [schemaResolver](#schemaresolver)
 - [Built-in validators](#built-in-validators)
 - [Validation rule format](#validation-rule-format)
 - [Key types](#key-types)
@@ -30,6 +31,7 @@ useForm<Values, TransformedValues>({
   enhanceGetInputProps?,
   onSubmitPreventDefault?,
   touchTrigger?,
+  cascadeUpdates?,
   validateDebounce?,
   resolveValidationError?,
   name?,
@@ -38,21 +40,22 @@ useForm<Values, TransformedValues>({
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `mode` | `'controlled' \| 'uncontrolled'` | `'controlled'` | Controlled: React state, re-renders on change. Uncontrolled: refs, no re-renders. |
+| `mode` | `'controlled' \| 'uncontrolled'` | `'controlled'` | Controlled: values in React state, re-render on every change. Uncontrolled (recommended): values in a ref, no re-render on value change. |
 | `initialValues` | `Values` | — | Starting values for all fields |
 | `initialErrors` | `FormErrors` | `{}` | Starting error messages |
 | `initialTouched` | `FormStatus` | `{}` | Starting touched flags |
 | `initialDirty` | `FormStatus` | `{}` | Starting dirty flags |
-| `validate` | `FormRules \| (values) => FormErrors \| Promise<FormErrors>` | — | Validation rules or function |
-| `validateInputOnChange` | `boolean \| string[]` | `false` | Validate on change (all or named fields) |
-| `validateInputOnBlur` | `boolean \| string[]` | `false` | Validate on blur (all or named fields) |
+| `validate` | `FormRulesRecord<Values> \| (values) => FormErrors \| Promise<FormErrors>` | — | Rules object, function, or `schemaResolver(schema)` |
+| `validateInputOnChange` | `boolean \| string[]` | `false` | Validate on change (all or named fields). Use `FORM_INDEX` for list items: `` `jobs.${FORM_INDEX}.title` `` |
+| `validateInputOnBlur` | `boolean \| string[]` | `false` | Validate on blur (all or named fields), supports `FORM_INDEX` |
 | `clearInputErrorOnChange` | `boolean` | `true` | Clear field error when its value changes |
 | `transformValues` | `(values: Values) => TransformedValues` | identity | Transform values before they reach `onSubmit` handler |
 | `onValuesChange` | `(values, previous) => void` | — | Called whenever any value changes |
 | `enhanceGetInputProps` | `(payload) => object \| void` | — | Merge extra props into every `getInputProps` call |
 | `onSubmitPreventDefault` | `'always' \| 'never' \| 'validation-failed'` | `'always'` | When to call `event.preventDefault()` |
 | `touchTrigger` | `'focus' \| 'change'` | `'change'` | When a field becomes touched |
-| `validateDebounce` | `number` | `0` | Debounce validation calls (ms) |
+| `cascadeUpdates` | `boolean` | `false` | `form.watch` subscribers of child paths are also called when a parent path is set |
+| `validateDebounce` | `number` | `0` | Debounce on-change and on-blur field validation (ms). Does not apply to `form.validate()` and `onSubmit` |
 | `resolveValidationError` | `(error: unknown) => ReactNode` | message extractor | Transform raw validation errors to display values |
 | `name` | `string` | — | Form name for `createFormActions` event bus |
 
@@ -64,9 +67,10 @@ useForm<Values, TransformedValues>({
 
 | Member | Type | Description |
 |---|---|---|
-| `values` | `Values` | Current form values (reactive in controlled mode) |
-| `errors` | `FormErrors` | Current errors keyed by field path |
+| `values` | `Values` | Current form values. Not updated in uncontrolled mode, use `getValues()` |
+| `errors` | `FormErrors` | Current errors keyed by field path (React state in both modes) |
 | `submitting` | `boolean` | True while async `onSubmit` handler is pending |
+| `validating` | `boolean` | True while any async validation is running |
 | `initialized` | `boolean` | True after `initialize()` has been called |
 
 ### Getting & setting values
@@ -75,10 +79,10 @@ useForm<Values, TransformedValues>({
 |---|---|---|
 | `getValues` | `() => Values` | Get current values snapshot |
 | `getInitialValues` | `() => Values` | Get initial values snapshot |
-| `setValues` | `(values: Partial<Values>) => void` | Merge partial values into form state |
+| `setValues` | `(values: Partial<Values> \| (prev) => Partial<Values>) => void` | Merge partial values into form state |
 | `setFieldValue` | `(path, value \| updater) => void` | Set a single field by dot-path |
 | `setInitialValues` | `(values: Values) => void` | Update the initial values reference |
-| `initialize` | `(values: Values) => void` | Reset form to given values and mark as initialized |
+| `initialize` | `(values: Values) => void` | Set values and initial values, mark the form as initialized. Works once, later calls are ignored |
 | `reset` | `() => void` | Reset to `initialValues`, clear errors/touched/dirty |
 | `resetField` | `(path) => void` | Reset a single field to its initial value |
 
@@ -86,7 +90,7 @@ useForm<Values, TransformedValues>({
 
 | Method | Signature | Description |
 |---|---|---|
-| `setErrors` | `(errors: FormErrors) => void` | Replace all errors |
+| `setErrors` | `(errors: FormErrors \| (prev) => FormErrors) => void` | Replace all errors |
 | `setFieldError` | `(path, error: ReactNode) => void` | Set one field's error |
 | `clearFieldError` | `(path) => void` | Clear one field's error |
 | `clearErrors` | `() => void` | Clear all errors |
@@ -99,8 +103,8 @@ useForm<Values, TransformedValues>({
 | `isTouched` | `(path?) => boolean` | True if field (or any field) has been interacted with |
 | `getDirty` | `() => FormStatus` | All dirty flags |
 | `getTouched` | `() => FormStatus` | All touched flags |
-| `setDirty` | `(status: FormStatus) => void` | Overwrite dirty flags |
-| `setTouched` | `(status: FormStatus) => void` | Overwrite touched flags |
+| `setDirty` | `(status: FormStatus \| (prev) => FormStatus) => void` | Overwrite dirty flags |
+| `setTouched` | `(status: FormStatus \| (prev) => FormStatus) => void` | Overwrite touched flags |
 | `resetDirty` | `(values?) => void` | Reset dirty tracking (optionally to new baseline) |
 | `resetTouched` | `() => void` | Reset all touched flags |
 
@@ -123,11 +127,13 @@ useForm<Values, TransformedValues>({
 | `isValidating` | `(path?) => boolean` | True if async validation is pending |
 | `setSubmitting` | `(value: boolean) => void` | Manually control `submitting` flag |
 
+`validate`, `validateField` and `isValid` return plain results when all rules are synchronous and a `Promise` when a rule is async or `schemaResolver` is used without `{ sync: true }`. TypeScript infers which one from the rules.
+
 ### Submission
 
 | Method | Signature | Description |
 |---|---|---|
-| `onSubmit` | `(handler, onError?) => FormEventHandler` | Returns event handler; calls `handler(values)` only when valid |
+| `onSubmit` | `(handler, onError?) => FormEventHandler` | Returns event handler; calls `handler(values, event)` only when valid, otherwise `onError(errors, values, event)` |
 | `onReset` | `FormEventHandler` | Pass to `<form onReset>` to reset on native reset |
 | `getTransformedValues` | `(values?) => TransformedValues` | Apply `transformValues` to given or current values |
 
@@ -135,16 +141,17 @@ useForm<Values, TransformedValues>({
 
 | Method | Signature | Description |
 |---|---|---|
-| `getInputProps` | `(path, options?) => object` | Returns `{ value, onChange, error, onFocus, onBlur }` to spread on an input |
+| `getInputProps` | `(path, options?) => object` | Returns `{ value, onChange, error, onFocus, onBlur }` to spread on an input (`defaultValue` instead of `value` in uncontrolled mode) |
 | `getInputNode` | `(path) => HTMLElement \| null` | Get the DOM node for a field (uncontrolled mode) |
-| `key` | `(path) => string` | React `key` for uncontrolled inputs that need forced re-renders |
+| `key` | `(path) => string` | React `key` for the input. Required on every input in uncontrolled mode |
 
 **`getInputProps` options:**
 ```ts
 {
-  type?: 'input' | 'checkbox'  // 'checkbox' uses checked/defaultChecked instead of value
-  withError?: boolean           // default true — include error prop
-  withFocus?: boolean           // default true — include onFocus/onBlur for touched tracking
+  type?: 'input' | 'checkbox' | 'radio' // 'checkbox' and 'radio' use checked/defaultChecked instead of value
+  value?: string                // required for type: 'radio' — the value of this radio option
+  withError?: boolean           // default true for type: 'input' — include error prop
+  withFocus?: boolean           // default true (false for type: 'radio') — include onFocus for touched tracking
 }
 ```
 
@@ -152,9 +159,10 @@ useForm<Values, TransformedValues>({
 
 | Method | Signature | Description |
 |---|---|---|
-| `watch` | `(path, subscriber) => void` | Subscribe to a field's changes |
+| `watch` | `(path, subscriber) => void` | Subscribe to a field's changes with a callback, does not rerender |
+| `useWatchValue` | `(path) => value` | Hook: returns the field value and rerenders the component when it changes. Works in both modes |
 
-Subscriber receives `{ value, previousValue, touched, dirty }`.
+`watch` subscriber receives `{ value, previousValue, touched, dirty }`.
 
 ---
 
@@ -172,7 +180,7 @@ const field = useField({
   initialError?,
   initialTouched?,      // boolean, default false
   onValueChange?,
-  type?,                // 'input' | 'checkbox', default 'input'
+  type?,                // 'input' | 'checkbox' | 'radio', default 'input'
   mode?,                // 'controlled' | 'uncontrolled', default 'controlled'
   resolveValidationError?,
 })
@@ -192,7 +200,7 @@ const field = useField({
   isTouched()           // boolean
   isDirty()             // boolean
   resetTouched()
-  key                   // number — for uncontrolled re-render forcing
+  key                   // number — add to the input as `key` in uncontrolled mode
 }
 ```
 
@@ -234,6 +242,21 @@ const form = useForm({ name: 'my-form-name', initialValues: {...} });
 
 ---
 
+## schemaResolver
+
+Validates the form with any [Standard Schema](https://standardschema.dev/) library (zod 4, valibot, arktype). No resolver package is needed.
+
+```ts
+import { schemaResolver } from '@mantine/form';
+
+validate: schemaResolver(schema)                 // validate() returns a Promise
+validate: schemaResolver(schema, { sync: true }) // validate() returns a plain result, for synchronous schemas
+```
+
+Error keys are the issue paths joined with dots (`user.address.city`, `employees.0.name`).
+
+---
+
 ## Built-in validators
 
 All validators return a rule function `(value, values) => ReactNode | null`.
@@ -251,7 +274,7 @@ All validators return a rule function `(value, values) => ReactNode | null`.
 | `isJSONString(error?)` | — | String is valid JSON |
 | `isOneOf(values[], error?)` | — | Value is one of allowed values |
 
-All `error` arguments are optional `ReactNode` — omit to use a default message.
+All `error` arguments are optional `ReactNode`. When omitted, the error is `true`: the input gets invalid styles without a message.
 
 ---
 
@@ -265,11 +288,12 @@ validate: {
     street: isNotEmpty(),
     zip: matches(/^\d{5}$/, 'Invalid ZIP'),
   },
-  // Validate the array itself (not its items) with formRootRule:
-  tags: {
-    [formRootRule]: (tags) => tags.length > 0 ? null : 'At least one tag required',
-    0: isNotEmpty(), // validates items too
-  }
+  // List of objects: keys are the item fields, the rule runs for every item.
+  // formRootRule validates the array itself; its error is at form.errors.employees
+  employees: {
+    [formRootRule]: isNotEmpty('At least one employee is required'),
+    name: isNotEmpty('Name is required'),
+  },
 }
 
 // Function — receives full values, returns errors object
@@ -307,7 +331,10 @@ interface FormFieldValidationResult {
   error: ReactNode
 }
 
+type FormRulesRecord<Values>   // shape of the `validate` rules object
+type UseFormReturnType<Values, TransformedValues = Values> // type of the `form` object, for props
+
 // Path utilities (for typed field paths)
-type LooseKeys<T>       // union of all dot-paths into T
-type FormPathValue<T, Path>  // value type at a given path
+type LooseKeys<T>              // union of all dot-paths into T
+type TransformedValues<typeof form> // type that onSubmit handler receives after transformValues
 ```

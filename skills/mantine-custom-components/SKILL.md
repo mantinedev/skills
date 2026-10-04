@@ -12,6 +12,8 @@ description: >
 
 # Mantine Custom Components Skill
 
+Written for Mantine 9.x.
+
 ## Component template
 
 ```tsx
@@ -57,9 +59,33 @@ export const MyComponent = factory<MyComponentFactory>((_props) => {
   return <Box {...getStyles('root')} {...others} />;
 });
 
-MyComponent.displayName = '@mantine/core/MyComponent';
+MyComponent.displayName = 'MyComponent';
 MyComponent.classes = classes;
 ```
+
+`ref` is a regular prop in React 19: it arrives in `props` and reaches the root element through `...others`.
+
+## Variants and sizes
+
+Pass `variant` and `size` to `Box`: it sets `data-variant` and `data-size` attributes to style in CSS.
+Passing `variant` to `getStyles` additionally applies the `root--{variant}` class when the CSS module defines one:
+
+```tsx
+const { variant, size, ...others } = props;
+
+<Box variant={variant} size={size} {...getStyles('root', { variant })} {...others} />
+```
+
+```css
+.root {
+  &[data-variant='outline'] { border: 1px solid var(--my-color); }
+  &[data-size='lg'] { height: 50px; }
+}
+```
+
+For colors that follow the theme, resolve them in the vars resolver with
+`theme.variantColorResolver({ color: color || theme.primaryColor, theme, variant: variant || 'filled', autoContrast })`
+— it returns `background`, `hover`, `color` and `border`.
 
 ## Factory variant — which to use
 
@@ -70,6 +96,7 @@ MyComponent.classes = classes;
 | Props change based on a generic (e.g. `multiple`) | `genericFactory()` | `Factory<{ signature: ... }>` |
 
 Use `polymorphicFactory` sparingly — it adds TypeScript overhead and slows IDE autocomplete.
+Every factory component also accepts `renderRoot={(props) => <a {...props} />}` as an alternative to `component`.
 
 ## Factory type fields
 
@@ -105,6 +132,15 @@ const theme = createTheme({
   },
 });
 ```
+
+In `theme.components`, sub-components are registered without the dot: `MyCardSection: MyCard.Section.extend({ defaultProps })`.
+
+## Looking things up
+
+This skill covers the common API. For anything else, do not guess:
+
+- If the Mantine MCP server (`@mantine/mcp-server`) is connected, use `search_docs`, `get_item_doc` and `get_api`
+- Otherwise fetch `https://mantine.dev/llms.txt` and open the Styles API, variants and sizes, and custom components pages
 
 ## References
 
