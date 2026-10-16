@@ -26,7 +26,7 @@ Example prompts:
 
 Build forms using `@mantine/form`.
 
-Use when: setting up a form with `useForm`, adding validation rules or async validation, working with nested object or array fields, sharing form state across components with `createFormContext`, using uncontrolled mode for performance, using the standalone `useField` hook, or any task involving `useForm`, `getInputProps`, `onSubmit`, `insertListItem`, or form validation.
+Use when: setting up a form with `useForm`, adding validation rules or async validation, working with nested object or array fields, reading values or dirty state during render (`useWatchValue`, `useDirty`), splitting a form into components or reusing field components across forms (`createFormContext`, `getField`), building custom inputs with `useFormField`, using the standalone `useField` hook, or any task involving `useForm`, `getInputProps`, `onSubmit`, `insertListItem`, or form validation.
 
 ```sh
 npx skills add https://github.com/mantinedev/skills --skill mantine-form
